@@ -44,4 +44,6 @@ int isNonTerminal(char symbol);
 
 int grammarHasNonTerminal(const Grammar *grammar, char symbol);
 
+int validateCompleteGrammar(const Grammar *grammar);
+
 #endif

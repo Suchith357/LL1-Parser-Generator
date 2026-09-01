@@ -14,6 +14,7 @@ int isNonTerminal(char symbol) {
     return symbol >= 'A' && symbol <= 'Z';
 }
 
+
 int grammarHasNonTerminal(const Grammar *grammar, char symbol) {
     for (int i = 0; i < grammar->nonTerminalCount; i++) {
         if (grammar->nonTerminals[i] == symbol) {
@@ -201,6 +202,32 @@ void identifySymbols(Grammar *grammar) {
     }
 }
 
+int validateCompleteGrammar(const Grammar *grammar) {
+    for (int i = 0; i < grammar->productionCount; i++) {
+        for (int j = 0; j < grammar->productions[i].rhsCount; j++) {
+
+            const char *rhs = grammar->productions[i].rhs[j];
+
+            for (int k = 0; rhs[k] != '\0'; k++) {
+                char symbol = rhs[k];
+
+                if (isNonTerminal(symbol) &&
+                    !grammarHasNonTerminal(grammar, symbol)) {
+
+                    printf(
+                        "Error: Non-terminal '%c' is used but not defined.\n",
+                        symbol
+                    );
+
+                    return 0;
+                }
+            }
+        }
+    }
+
+    return 1;
+}
+
 int readGrammar(Grammar *grammar) {
     int count;
 
@@ -231,6 +258,9 @@ int readGrammar(Grammar *grammar) {
             printf("Invalid grammar format: %s\n", line);
             return 0;
         }
+    }
+    if (!validateCompleteGrammar(grammar)) {
+        return 0;
     }
 
     identifySymbols(grammar);

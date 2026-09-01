@@ -1,10 +1,13 @@
 #include <stdio.h>
 #include "../include/grammar.h"
+#include "../include/first.h"
 
 int main() {
     Grammar grammar;
+    FirstCollection firstCollection;
 
     initializeGrammar(&grammar);
+    initializeFirstCollection(&firstCollection);
 
     printf("====================================\n");
     printf("      LL(1) PARSER GENERATOR\n");
@@ -23,6 +26,10 @@ int main() {
 
     displayGrammar(&grammar);
     displaySymbols(&grammar);
+
+    computeFirstSets(&grammar, &firstCollection);
+
+    displayFirstSets(&firstCollection);
 
     return 0;
 }
