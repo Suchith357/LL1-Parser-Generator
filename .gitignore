@@ -1,0 +1,17 @@
+# Build artifacts
+build/
+*.o
+*.obj
+*.exe
+ll1
+ll1.exe
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Reports generated at runtime (keep committed docs)
+*.out

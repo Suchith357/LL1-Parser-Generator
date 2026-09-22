@@ -1,0 +1,977 @@
+================================================================================
+PROJECT_SPECIFICATION.txt - LL(1) PARSER GENERATOR
+================================================================================
+This document describes the project exactly as it is implemented. It is
+written so that another developer can understand the entire system without
+opening the source code first. Where a value is quoted, it comes from the
+actual source files (include/constants.h and the module sources).
+
+--------------------------------------------------------------------------------
+A. PROJECT IDENTITY
+--------------------------------------------------------------------------------
+
+Project title (locked by faculty):
+    Design and Implementation of an LL(1) Parser Generator with Automatic
+    FIRST-FOLLOW Computation, Predictive Parsing Table Construction and
+    Syntax-Directed Translation
+
+Team number:   Team 4
+Course:        Compiler Design
+Language:      C (portable C99, compiled with -Wall -Wextra -pedantic)
+Team size:     5 members
+Team members:  24bce0092, 24bde0155, 24bce0556, 24bci0103, 24BDS0044
+
+Project objective:
+    Build a GENERAL-PURPOSE LL(1) parser generator. The user supplies a
+    context-free grammar in a documented text format; the program
+    automatically identifies terminals and non-terminals, computes FIRST
+    and FOLLOW sets, constructs the predictive parsing table, detects
+    LL(1) conflicts, parses input strings with a table-driven predictive
+    parser, and performs syntax-directed translation (postfix form plus
+    three-address code). Nothing about the demonstration grammar is
+    hardcoded: every result is computed from the input grammar.
+
+--------------------------------------------------------------------------------
+B. PROJECT SCOPE
+--------------------------------------------------------------------------------
+
+What the project DOES:
+  - Reads any context-free grammar written in the documented format
+    (multiple grammars are supported; there is no grammar-specific code).
+  - Validates the grammar and reports precise, line-numbered errors.
+  - Classifies symbols into non-terminals and terminals automatically.
+  - Computes FIRST sets by fixed-point iteration (handles epsilon
+    propagation, direct recursion, indirect recursion).
+  - Computes FOLLOW sets by fixed-point iteration (all three standard
+    rules, reusing the FIRST module's sequence helper).
+  - Constructs the LL(1) predictive parsing table M[A, a] automatically.
+  - Detects and reports LL(1) conflicts without overwriting entries.
+  - Parses input strings with a table-driven predictive parser and prints
+    a step-by-step trace (Stack | Input | Action).
+  - Performs syntax-directed translation: postfix output plus optional
+    three-address code generation.
+  - Runs in an automatic pipeline mode and a 9-option interactive menu.
+
+What the project does NOT do (by design):
+  - It is NOT a general compiler: it does no lexical analysis beyond
+    whitespace tokenization, no semantic type checking, and no code
+    optimization.
+  - It does NOT transform grammars: no automatic left-recursion
+    elimination and no automatic left factoring. A grammar that is not
+    LL(1) is reported as such with the exact conflicting table cells.
+  - It is not LR, LALR, SLR, or backtracking-based: LL(1) only.
+
+--------------------------------------------------------------------------------
+C. COMPLETE PIPELINE
+--------------------------------------------------------------------------------
+
+    CFG INPUT
+       |
+       v
+    1. GRAMMAR PROCESSING + VALIDATION ......... src/grammar.c
+       Reads productions, splits alternatives on '|', normalizes
+       whitespace, validates every line (arrow, symbols, epsilon use)
+       and the whole grammar (undefined non-terminals, reserved '$').
+       Invalid input aborts with a diagnostic; nothing downstream runs.
+       |
+       v
+    2. TERMINAL / NON-TERMINAL IDENTIFICATION .. src/grammar.c
+       Non-terminals = symbols appearing as some LHS (first-appearance
+       order). Terminals = remaining RHS symbols except '#'.
+       First production's LHS is the start symbol.
+       |
+       v
+    3. FIRST SET COMPUTATION ................... src/first.c
+       Fixed-point iteration over all productions; FIRST of a whole
+       RHS sequence is available through firstOfSequence().
+       |
+       v
+    4. FOLLOW SET COMPUTATION .................. src/follow.c
+       Rules 1-3 applied by fixed-point iteration; '$' in FOLLOW(start).
+       |
+       v
+    5. PREDICTIVE PARSING TABLE ................ src/parsing_table.c
+       For each production A -> alpha: columns FIRST(alpha)\{#}; if
+       alpha is nullable, all of FOLLOW(A). Cells hold production
+       references (lhsIndex, altIndex), never duplicated text.
+       |
+       v
+    6. LL(1) CONFLICT DETECTION ................ src/parsing_table.c
+       A cell claimed by two different productions is recorded as a
+       conflict (both productions kept, cell not overwritten) and the
+       grammar is marked NOT LL(1).
+       |
+       +--------- conflicting: report M[A,a], both productions,
+       |         "Grammar is NOT LL(1)." Parsing is refused.
+       v
+    7. PREDICTIVE PARSING ...................... src/parser.c
+       Stack + input + table loop with '$' end marker; prints a trace
+       and positioned diagnostics on error.
+       |
+       v
+    8. SYNTAX-DIRECTED TRANSLATION ............. src/translation.c
+       Semantic actions fire at SHIFT/REDUCE/ACCEPT points of the same
+       parse; produces the postfix form and three-address code.
+       |
+       v
+    OUTPUT
+
+--------------------------------------------------------------------------------
+D. GRAMMAR FORMAT
+--------------------------------------------------------------------------------
+
+Example (the locked demonstration grammar):
+
+    E -> T Ep
+    Ep -> + T Ep | #
+    T -> F Tp
+    Tp -> * F Tp | #
+    F -> ( E ) | id
+
+Rules, exactly as implemented by src/grammar.c:
+
+  1. One production group per line:  LHS -> ALT1 | ALT2 | ...
+  2. "->" separates the left-hand side from the right-hand side.
+     Exactly one "->" per line is allowed (a second one is rejected).
+  3. "|" separates alternatives of the same LHS.
+  4. "#" denotes epsilon and must be the ONLY symbol of its alternative.
+     ("S -> a #" is rejected.)
+  5. Symbols are separated by one or more spaces. Spaces around "->"
+     are optional ("Ep->+ T Ep|#" is accepted) because "->" is located
+     textually, not as a token. A symbol itself may never contain a
+     space, so "(E)" would be ONE terminal named "(E)" - write "( E )".
+  6. The LHS of the FIRST production is the start symbol.
+  7. Lines may be blank (skipped). Input is read from a file, from
+     stdin, or interactively.
+  8. The end marker "$" may not appear anywhere in a grammar.
+  9. Repeating an LHS on a later line simply appends alternatives to
+     that group (e.g. "Ep -> # | + T Ep" split over two lines works).
+
+--------------------------------------------------------------------------------
+E. WHAT IS A NON-TERMINAL?
+--------------------------------------------------------------------------------
+
+Definition used by the implementation:
+    A symbol is a non-terminal if and only if it appears as the
+    LEFT-HAND SIDE of at least one production.
+
+Examples from the demonstration grammar: E, Ep, T, Tp, F.
+
+How the program identifies them (grammar.c, identifySymbols()):
+    After reading all lines, every distinct LHS is collected into
+    grammar->nonTerminals[] in first-appearance order, with
+    grammar->nonTerminalCount entries. grammarIsNonTerminal(name) does a
+    linear scan of that list. A symbol used on an RHS that starts with an
+    uppercase letter but is NOT defined on any LHS is rejected with
+    "non-terminal 'X' is used but never defined" - this catches typos
+    early. (Lowercase/operator-shaped RHS symbols are terminals.)
+
+--------------------------------------------------------------------------------
+F. WHAT IS A TERMINAL?
+--------------------------------------------------------------------------------
+
+Definition used by the implementation:
+    A symbol appearing on some RHS that is NOT a non-terminal and is
+    not "#" is a terminal.
+
+Examples: id, num, +, -, *, /, (, ).
+
+Identification (grammar.c, identifySymbols()):
+    Every RHS symbol is checked against the non-terminal list; anything
+    unknown lands in grammar->terminals[] in first-appearance order
+    (for the demo grammar: +, *, (, ), id). This order is also the
+    column order of the printed parsing table, with "$" last.
+
+Distinction summary:
+    LHS symbol  -> non-terminal (the grammar's "variables")
+    other RHS symbol -> terminal (the grammar's "alphabet")
+    "#"         -> epsilon marker, not a terminal
+    "$"         -> end marker, reserved for the parser, never a symbol
+
+--------------------------------------------------------------------------------
+G. EPSILON
+--------------------------------------------------------------------------------
+
+Representation:   "#" (exactly the one-character symbol).
+
+Meaning:          the empty string; the production derives nothing.
+
+Where it is handled:
+  - grammar.c   : "#" must be alone in its alternative.
+  - first.c     : if an alternative's every symbol is nullable (or the
+                  alternative is "#"), "#" is added to FIRST(LHS).
+                  firstOfSequence() reports nullability via hasEpsilon.
+  - follow.c    : Rule 3 uses "beta is nullable" (i.e. "#" in
+                  FIRST(beta)) to add FOLLOW(A) into FOLLOW(B).
+  - parsing_table.c : if # in FIRST(alpha), the production is placed in
+                  M[A, b] for every b in FOLLOW(A) - including the "$"
+                  column.
+  - parser.c    : expanding an epsilon production pops the non-terminal
+                  and pushes nothing.
+  - translation.c : an epsilon production pushes an empty semantic
+                  value so enclosing reductions stay balanced.
+
+Why "#" is not treated as an ordinary terminal:
+    It would otherwise appear in FIRST/FOLLOW sets and in the parsing
+    table, which would be meaningless: epsilon is not a token that can
+    be matched against input. The validation rules and every module
+    therefore special-case "#" - but always as "nullable", never as a
+    matchable symbol.
+
+--------------------------------------------------------------------------------
+H. END MARKER
+--------------------------------------------------------------------------------
+
+Representation:   "$" (constant END_MARKER in constants.h).
+
+Why it exists:    the parser must know where the input ends; without a
+                  distinguished end symbol, "accept" would be ambiguous
+                  and the table could not predict reductions that finish
+                  a non-terminal at end of input.
+
+Where it appears:
+  - It is appended automatically as the last token of every input
+    string (parser.c, parserTokenizeInput).
+  - It occupies the reserved LAST COLUMN of the parsing table
+    (column index grammar->terminalCount).
+  - It sits at the BOTTOM of the parse stack as the initial stack
+    entry below the start symbol.
+
+Why it belongs to FOLLOW(start):
+    A complete derivation of the start symbol may be followed by
+    nothing except the end of input; hence the end marker is the
+    defining member of FOLLOW(start) (Rule 1 in follow.c).
+
+How the parser uses it:
+    Accept happens exactly when the stack bottom "$" is on top AND the
+    lookahead is "$". Any other lookahead at that point is a "trailing
+    garbage" syntax error. When the lookahead is "$", table lookups use
+    the reserved "$" column.
+
+--------------------------------------------------------------------------------
+I. ALL SIZE LIMITS  (actual values from include/constants.h)
+--------------------------------------------------------------------------------
+
+Limit                Value   What it limits / what happens if exceeded
+--------------------------------------------------------------------------------
+MAX_SYMBOL_LENGTH     32     Characters per symbol name (31 usable + NUL).
+                             Longer names are rejected by validation.
+MAX_PRODUCTIONS       50     Distinct LHS production groups. Exceeding:
+                             "too many productions (max 50)".
+MAX_ALTERNATIVES      20     Alternatives per LHS group. Exceeding:
+                             "too many alternatives ... (max 20)".
+MAX_RHS_SYMBOLS       20     Symbols in one RHS alternative. Exceeding:
+                             rejected during grammar validation.
+MAX_RHS_LENGTH       128     Characters of one RHS alternative. Longer
+                             alternatives cannot be stored; the line is
+                             rejected.
+MAX_LINE_LENGTH      256     Characters of one input line. fgets reads at
+                             most this; overlong lines are split by the
+                             OS read and then rejected by validation.
+MAX_SYMBOLS           50     Maximum non-terminals AND maximum terminals
+                             (the same cap for each list). This also
+                             bounds table rows and columns via
+                             MAX_TABLE_ROWS / MAX_TABLE_COLS.
+MAX_SET_ELEMENTS      64     Elements in one FIRST/FOLLOW set. Overflow
+                             prints a warning and stops growing the set.
+MAX_TABLE_ROWS        50     = MAX_SYMBOLS; checked in constructParsingTable.
+MAX_TABLE_COLS        50     = MAX_SYMBOLS; the table needs
+                             terminalCount + 1 columns (the extra one is
+                             "$"); exceeding: "too many terminals for
+                             the table".
+MAX_CONFLICTS         32     Recorded conflicts before further ones are
+                             dropped with a warning (verdict already
+                             known: NOT LL(1)).
+MAX_STACK_DEPTH     1024     Parse stack entries. Overflow: "parse stack
+                             overflow", parse aborts safely.
+MAX_INPUT_TOKENS     256     Tokens per input string (including the
+                             appended "$"). Overflow: tokenization fails
+                             with a message.
+MAX_TOKEN_LENGTH      32     Characters per input token; longer tokens
+                             are rejected at tokenization.
+MAX_PARSE_STEPS     20000    Trace steps before the parser aborts with
+                             "exceeded 20000 steps" - a safety net that
+                             rules out infinite loops.
+MAX_ACTION_LENGTH    164     = MAX_SYMBOL_LENGTH + MAX_RHS_LENGTH + 8;
+                             buffer for one "A -> alpha" action string.
+MAX_REGISTRY_ENTRIES 100     = 2 * MAX_SYMBOLS; capacity of the shared
+                             symbol registry in utils.h.
+MAX_SEMANTIC_STACK   256     SDT semantic stack depth; overflow is
+                             recorded and reported by translateInput().
+MAX_SEMANTIC_TEXT    128     Characters per semantic value (a postfix
+                             fragment). (Raised from the draft value 64
+                             during integration; all appends remain
+                             bounds-checked.)
+MAX_POSTFIX_LENGTH  1024     Characters of the final postfix string.
+MAX_TAC_TEMPS         64     Temporaries t1..t64; exceeding: error in
+                             the translation result.
+MAX_TAC_LINES        128     Three-address instructions; exceeding:
+                             error in the translation result.
+MAX_TAC_LINE_LENGTH  128     Characters per instruction.
+
+Sentinels:  END_MARKER '$' (end of input; never a grammar symbol),
+            INVALID_INDEX (-1) ("not found / empty cell").
+
+--------------------------------------------------------------------------------
+J. SYMBOL RESTRICTIONS
+--------------------------------------------------------------------------------
+
+Based on utilsIsValidSymbol() in src/utils.c:
+
+  - Length:              1..31 characters (MAX_SYMBOL_LENGTH - 1).
+  - Allowed characters:  alphanumerics, underscore "_", and the
+                         operator characters + - * / ( ) =
+  - Case sensitivity:    YES - "Ep" and "ep" are different symbols.
+  - Digits:              allowed anywhere in a name (e.g. "t1").
+  - Whitespace:          separates symbols; never part of a symbol.
+  - Punctuation:         only the operator characters listed above;
+                         e.g. ";" or "," are rejected.
+  - Reserved symbols:    "#" (epsilon, only alone in an alternative)
+                         and "$" (end marker, rejected inside grammars
+                         because it is not a legal symbol character).
+  - Arrow syntax:        exactly one "->" per line.
+  - Convention:          names starting with an uppercase letter are
+                         expected to be non-terminals and MUST have a
+                         production with that LHS, otherwise rejected.
+
+--------------------------------------------------------------------------------
+K. GRAMMAR RESTRICTIONS
+--------------------------------------------------------------------------------
+
+  - Maximum productions:            50 groups (MAX_PRODUCTIONS).
+  - Maximum RHS length:             128 characters (MAX_RHS_LENGTH).
+  - Duplicate productions:          allowed - a repeated LHS merges into
+                                    the same group (alternatives append).
+  - Empty RHS / empty alternative:  NOT allowed ("E -> | a" is rejected).
+  - Epsilon:                        written as "#", alone.
+  - Undefined non-terminals:        NOT allowed; rejected with a
+                                    diagnostic that names the symbol.
+  - Space separation:               required between symbols (see D).
+  - Multiple alternatives:          supported via "|".
+  - Left recursion:                 accepted as a valid CFG but the
+                                    parsing table will contain conflicts,
+                                    so the grammar is reported NOT LL(1).
+                                    The program does NOT remove left
+                                    recursion automatically.
+  - Left factoring:                 NOT performed automatically. Grammars
+                                    needing it (e.g. S -> a A | a B) are
+                                    reported as NOT LL(1) with the exact
+                                    conflicting cells.
+  - Ambiguity:                      not detected in general; it surfaces
+                                    as LL(1) conflicts.
+  - LL(1)-suitability:              the grammar must already be LL(1)
+                                    for parsing/translation to run.
+
+--------------------------------------------------------------------------------
+L. INPUT MODES
+--------------------------------------------------------------------------------
+
+As implemented in src/main.c:
+
+  ./ll1                     menu mode: 9-option interactive menu
+                            (1 Load Grammar, 2 Display Grammar,
+                            3 FIRST, 4 FOLLOW, 5 Parsing Table,
+                            6 Check LL(1), 7 Parse Input,
+                            8 Syntax-Directed Translation, 9 Exit).
+                            Option 1 accepts a file path, or empty input
+                            to type productions interactively.
+
+  ./ll1 grammar.txt         automatic pipeline; after the LL(1) analysis
+                            it reads INPUT STRINGS from stdin, one per
+                            line (empty line = epsilon input; the line
+                            "quit" or EOF ends) and parses + translates
+                            each one.
+
+  ./ll1 - < grammar.txt     automatic pipeline with the grammar on stdin;
+                            stdin is then exhausted, so the parse phase
+                            is skipped (stated in the output).
+
+  make run                  runs the pipeline on the standard grammar
+                            with testcases/inputs/demo_inputs.txt.
+  make test                 builds and runs testcases/run_tests.sh.
+
+--------------------------------------------------------------------------------
+M. EVERY FILE IN THE PROJECT
+--------------------------------------------------------------------------------
+
+README.md
+    Purpose:  project overview, build instructions, grammar format,
+              module/owner status table, repository layout.
+
+Makefile
+    Purpose:  builds all modules into ./ll1 with gcc, C99, -Wall
+              -Wextra -pedantic; targets: all, run (demo pipeline),
+              test (integration suite), clean (removes build/ + binary).
+
+.gitignore
+    Purpose:  keeps generated files (objects, build/, executables,
+              editor/temp files) out of version control.
+
+PROJECT_SPECIFICATION.txt
+    Purpose:  this document - the complete plain-text description of
+              the system.
+
+include/constants.h
+    Purpose:  SINGLE SOURCE OF TRUTH for every compile-time limit and
+              sentinel (END_MARKER, INVALID_INDEX). All modules include
+              it; no module defines its own buffer sizes.
+
+include/utils.h / src/utils.c
+    Purpose:  shared data structures and helpers: StringSet (set of
+              symbols with membership/add/remove/equality), SymbolTable
+              (string<->index registry), symbol validation, epsilon and
+              end-marker tests, trim and whitespace normalization.
+
+include/grammar.h / src/grammar.c      [Owner: 24bce0092]
+    Purpose:  Module 1 - reads productions (file / stdin / interactive),
+              validates lines and the whole grammar with line-numbered
+              diagnostics, classifies terminals/non-terminals, stores
+              productions, and provides the RHS tokenizer helpers
+              (productionAltSymbolCount, productionAltGetSymbol,
+              productionAltIsEpsilon, productionAltToString) used by
+              every later module.
+
+include/first.h / src/first.c          [Owner: 24bde0155]
+    Purpose:  Module 2 - FIRST set computation by fixed-point
+              iteration, including firstOfSequence() (FIRST of a whole
+              RHS alternative) and nullability queries, reused by
+              FOLLOW and the parsing table.
+
+include/follow.h / src/follow.c        [Owner: 24bce0556]
+    Purpose:  Module 3 - FOLLOW set computation by fixed-point
+              iteration implementing Rules 1-3, reusing
+              firstOfSequence() for the trailing sequence beta.
+
+include/parsing_table.h / src/parsing_table.c  [Owner: 24bci0103]
+    Purpose:  Module 4 - LL(1) table construction, conflict recording,
+              table queries (tableHasEntry, tableEntryToString) and
+              display of the grid and of the LL(1) verdict.
+
+include/parser.h / src/parser.c        [Owner: 24BDS0044]
+    Purpose:  Module 5 - table-driven predictive parser: input
+              tokenization, the parse loop with trace, positioned
+              error diagnostics, an interactive entry point, and the
+              ParserActionFn hook (SHIFT/REDUCE/ACCEPT events) that the
+              translation module attaches to.
+
+include/translation.h / src/translation.c      [Owner: 24BDS0044]
+    Purpose:  Module 6 - syntax-directed translation: semantic stack,
+              the action set fired on parser events, postfix
+              construction, three-address code generation, and the
+              translation display.
+
+src/main.c
+    Purpose:  integration driver - automatic pipeline mode and the
+              interactive menu; owns the AppState struct and the
+              lazy stage ordering (FIRST before FOLLOW before table).
+
+testcases/valid/, testcases/invalid/, testcases/edge/
+    Purpose:  grammar files for the test suite (see section R). Note:
+              expression_letters.txt is a variant of the demo grammar
+              with F -> ( E ) | a | b | c so textbook inputs like
+              "a + b * c" parse directly; expression_valid.txt uses
+              "id" as the terminal.
+
+testcases/inputs/demo_inputs.txt
+    Purpose:  input strings used by `make run`.
+
+testcases/run_tests.sh
+    Purpose:  integration test suite: runs every scenario through the
+              binary and checks expected output markers; PASS/FAIL per
+              test with a summary; used by `make test`.
+
+docs/design.md
+    Purpose:  shared architecture: data structures, module dependency
+              graph, reuse points, build strategy, git branch plan.
+
+docs/input_format.md
+    Purpose:  grammar input format rules and the rejected-input table.
+
+docs/presentation.md
+    Purpose:  slide-by-slide presentation content for Review 1 /
+              Review 2 / final demonstration.
+
+report/
+    Purpose:  the written project report (faculty template).
+
+--------------------------------------------------------------------------------
+N. MODULE DEPENDENCIES
+--------------------------------------------------------------------------------
+
+    constants.h  (no dependencies; included by everything)
+        |
+        v
+    utils.h/.c
+        |
+        v
+    grammar.h/.c          (Module 1)
+        |
+        v
+    first.h/.c            (Module 2; uses grammar's RHS tokenizer)
+        |
+        v
+    follow.h/.c           (Module 3; uses firstOfSequence)
+        |
+        v
+    parsing_table.h/.c    (Module 4; uses FIRST + FOLLOW)
+        |
+        v
+    parser.h/.c           (Module 5; uses the parsing table)
+        |
+        v
+    translation.h/.c      (Module 6; hooks into the parser's events)
+        |
+        v
+    main.c                (integration; orchestrates the pipeline)
+
+Shared utilities: utils.c is used by grammar (validation), parser
+(tokenization limits), translation (indirectly via limits). The RHS
+tokenizer lives in grammar.c and is reused by first, follow,
+parsing_table, and parser - the logic exists exactly once.
+
+--------------------------------------------------------------------------------
+O. DATA STRUCTURES
+--------------------------------------------------------------------------------
+
+Production  (grammar.h)
+    lhs[MAX_SYMBOL_LENGTH]        the non-terminal this group defines
+    rhs[MAX_ALTERNATIVES][MAX_RHS_LENGTH]
+                                  each alternative stored as the original
+                                  space-separated symbol string, e.g.
+                                  "+ T Ep"; "#" alone = epsilon
+    rhsCount                      number of alternatives
+
+Grammar  (grammar.h)
+    productions[], productionCount
+    nonTerminals[][], nonTerminalCount   (first-appearance order)
+    terminals[][], terminalCount         (first-appearance order)
+    startSymbol[]                        (first production's LHS)
+    Indices: grammarNonTerminalIndex/grammarTerminalIndex map a name to
+    its array index, or INVALID_INDEX.
+
+FirstSet / FirstCollection  (first.h)
+    sets[i] corresponds to grammar->nonTerminals[i]. A FirstSet holds
+    elements[][] (terminal names, or "#"), count, and hasEpsilon.
+
+FollowSet / FollowCollection  (follow.h)
+    sets[i] corresponds to grammar->nonTerminals[i]. Elements are
+    terminals plus "$". Display order is sorted to grammar terminal
+    order with "$" last.
+
+TableCell / ParsingTable  (parsing_table.h)
+    cells[nonTerminalIndex][terminalIndex] = { lhsIndex, altIndex } -
+    a reference into grammar->productions[lhsIndex].rhs[altIndex].
+    INVALID_INDEX means empty. The "$" column has index terminalCount.
+    conflicts[] records { lhsIndex, altIndex } (the newcomer) and
+    { lhsIndex2, altIndex2 } (the production already in the cell) plus
+    the terminal name.
+
+ParserState  (parser.h)
+    stack[MAX_STACK_DEPTH][MAX_SYMBOL_LENGTH] with stackTop (top index);
+    input[MAX_INPUT_TOKENS][MAX_TOKEN_LENGTH] with inputCount and
+    inputPos (0-based lookahead); stepNumber; accepted; lastError.
+    REDUCE markers used for SDT live in local parallel arrays inside
+    parserRunWithActions and are never visible in the trace.
+
+SemanticStack / TranslationResult  (translation.h)
+    SemanticStack holds SemanticValue text buffers (postfix fragments).
+    TranslationResult accumulates the postfix string, three-address
+    lines, temporary counter, and lastError.
+
+AppState  (main.c)
+    Bundles Grammar, FirstCollection, FollowCollection, ParsingTable
+    and the "which stage is done" flags used by the menu.
+
+--------------------------------------------------------------------------------
+P. ALGORITHMS
+--------------------------------------------------------------------------------
+
+1. Grammar processing (grammar.c)
+   Input:  lines in the documented format.
+   Output: a validated Grammar.
+   Steps:  for each line - locate "->" (exactly one), validate the LHS
+           (single valid symbol), split the RHS on "|", validate each
+           alternative (valid symbols, "#" alone, no "$"), normalize
+           whitespace, append alternatives to the LHS's group.
+   Then:   identifySymbols() classifies symbols; grammarValidate()
+           checks undefined non-terminals and capacity limits.
+   Errors: line-level with the line number and text appended.
+   Complexity: O(total input characters) for parsing; symbol
+           identification is O(P*R*(N+T)) with P productions, R RHS
+           symbols, N non-terminals, T terminals (linear scans).
+
+2. FIRST computation (first.c)
+   Input:  a validated Grammar.
+   Output: FirstCollection with one set per non-terminal.
+   Steps:  repeat sweeps over all productions until no set changes;
+           for A -> X1..Xn add FIRST(X1)\{#}; if X1 nullable continue
+           to X2, and so on; if all Xi nullable (or n=0) add "#".
+   Termination: sets only grow and are bounded by the terminal
+           alphabet plus "#" -> at most N+T sweeps; each sweep is
+           O(P*R). Complexity O((N+T)*P*R) worst case; 2-3 sweeps in
+           practice. firstOfSequence() applies the same logic to one
+           RHS string and is reused by FOLLOW and the table.
+
+3. FOLLOW computation (follow.c)
+   Input:  Grammar + FirstCollection.
+   Output: FollowCollection, one set per non-terminal.
+   Steps:  Rule 1 - "$" into FOLLOW(start). Then repeat sweeps over
+           every occurrence A -> alpha B beta: Rule 2 adds
+           FIRST(beta)\{#} (computed with firstOfSequence on the tail
+           substring); Rule 3 adds FOLLOW(A) when beta is nullable or
+           absent. Stop at the fixed point; finally sort each set for
+           display (terminal order, "$" last).
+   Complexity: at most O(N*T) sweeps x O(P*R*FIRST-cost) per sweep.
+
+4. Parsing table construction (parsing_table.c)
+   Input:  Grammar + FIRST + FOLLOW.
+   Output: ParsingTable + conflict list.
+   Steps:  for each production A -> alpha: for each a in
+           FIRST(alpha)\{#} place (A,alpha) into M[A,a]; if alpha is
+           nullable, for each b in FOLLOW(A) place (A,alpha) into
+           M[A,b]. A cell claimed by a second production is recorded as
+           a conflict (both references kept, cell not overwritten).
+   Returns 1 (LL(1)) iff conflictCount == 0.
+   Complexity: O(P*R + P*T) placements; each placement O(T) worst case
+           (column lookup), trivial at course scale.
+
+5. Conflict detection
+   Implemented inside table construction (step 4): the report names the
+   cell M[A, a] and prints both productions; the verdict line is
+   "Grammar is LL(1)." or "Grammar is NOT LL(1)."
+
+6. Predictive parsing (parser.c)
+   Input:  tokenized input ("tokens... $"), the table, the grammar.
+   Output: acceptance/rejection + trace.
+   Steps:  stack = "$ startSymbol". Loop: fire completed-production
+           markers (SDT hook); if top is "$" accept iff lookahead "$";
+           if top is a terminal, match or error; if top is a
+           non-terminal, require M[X, a], pop X and push the RHS in
+           reverse (epsilon pushes nothing).
+   Diagnostics: token position, offending token, the missing table
+           cell [X, a], and the row's expected terminals.
+   Safety: MAX_PARSE_STEPS cap and bounded stack rule out infinite
+           loops and overflows.
+   Complexity: O(|input|) table-driven steps for an LL(1) grammar;
+           each step does bounded work (stack/trace strings are the
+           largest factor, capped by the constants in section I).
+
+7. Syntax-directed translation (translation.c)
+   Mechanism: the parser fires SHIFT (terminal matched), REDUCE
+           (production complete), ACCEPT events; translation keeps a
+           semantic stack: SHIFT pushes the token; REDUCE pops |rhs|
+           values, computes the LHS value by the production's RHS
+           SHAPE (see the scheme in src/translation.c: epsilon -> "",
+           single symbol -> identity, "( ... )" -> drop parentheses,
+           "op X1..Xk" -> postfix "X1.val ... Xk.val op", otherwise
+           concatenation), and pushes the result; ACCEPT pops the final
+           value as the postfix string.
+   TAC:    the postfix string is evaluated with a value stack; for each
+           operator + - * / a temporary tN = left op right is emitted.
+   Example: "a + b * c" -> postfix "a b c * +",
+            TAC "t1 = b * c", "t2 = a + t1".
+   Complexity: O(|postfix|) for both phases.
+
+--------------------------------------------------------------------------------
+Q. LL(1) CONDITIONS
+--------------------------------------------------------------------------------
+
+"LL(1)" means: a Left-to-right scan, producing a Leftmost derivation,
+using 1 symbol of lookahead.
+
+A grammar is LL(1) exactly when the predictive parsing table M has at
+most one production per cell M[A, a]. Equivalently, for every pair of
+distinct alternatives A -> alpha | beta:
+  1. FIRST(alpha) and FIRST(beta) must be disjoint;
+  2. at most one of alpha, beta may be nullable;
+  3. if beta is nullable, FIRST(alpha) must be disjoint from FOLLOW(A).
+
+How this project checks it: conflicts are detected mechanically while
+filling the table (a cell claimed twice). This is exact for LL(1): a
+conflict exists if and only if the grammar violates the conditions.
+The demo grammar, the epsilon grammar, the indirect-recursive grammar
+and the optional-symbol grammar all pass; S -> a A | a B fails at
+M[S, a]; the left-recursive grammar fails at M[E, id].
+
+--------------------------------------------------------------------------------
+R. TEST CASES
+--------------------------------------------------------------------------------
+
+All scenarios live in testcases/ and run automatically via `make test`
+(testcases/run_tests.sh). Each prints PASS/FAIL; the suite exits
+non-zero if anything fails.
+
+ID    Category            Input / grammar                 Expected result
+-------------------------------------------------------------------------------
+T01   Valid LL(1)         expression_valid.txt            FIRST/FOLLOW exactly
+                                                          as in section Z;
+                                                          "Grammar is LL(1)"
+T02   Epsilon prop.       epsilon_propagation.txt         FIRST(S)={a,b},
+                                                          FIRST(A)={a,#},
+                                                          FIRST(B)={b}; LL(1)
+T03   Pure epsilon        pure_epsilon.txt                FIRST(S)={#},
+                                                          FOLLOW(S)={$}; LL(1)
+T03b  Empty input         "" on pure_epsilon              INPUT ACCEPTED
+T04   Non-LL(1)           non_ll1_conflict.txt            Conflict at M[S, a],
+                                                          both productions
+                                                          shown; NOT LL(1)
+T05   Simple              simple.txt (S -> a)             FIRST(S)={a},
+                                                          FOLLOW(S)={$}
+T05b  Valid input         "a"                             INPUT ACCEPTED
+T05c  Invalid input       "b"                             SYNTAX ERROR + "No
+                                                          parsing-table entry
+                                                          for [S, b]"
+T06a  Undefined NT        undefined_nt.txt                rejected: "never
+                                                          defined"
+T06b  Missing arrow       missing_arrow.txt               rejected: "missing
+                                                          '->'"
+T06c  Double arrow        double_arrow.txt                rejected: "more than
+                                                          one '->'"
+T06d  Invalid character   bad_symbol.txt (a$b)            rejected: "invalid
+                                                          symbol"
+T06e  Empty alternative   empty_alt.txt                   rejected: "empty
+                                                          alternative"
+T06f  End marker in CFG   end_marker.txt (S -> a $)       rejected: reserved
+T07   Indirect recursion  indirect_recursion.txt          FIRST(S)={c},
+                                                          FIRST(A)={#,c};
+                                                          correctly reported
+                                                          NOT LL(1) (A -> S b
+                                                          and A -> # clash at
+                                                          [A, c])
+T08   Valid input         "id + id * id" (and 2 more)     INPUT ACCEPTED with
+                                                          full trace
+T09   Invalid input       "id + * id"                     SYNTAX ERROR: "No
+                                                          parsing-table entry
+                                                          for [T, *]"
+T09b  Invalid input       "id +"                          SYNTAX ERROR
+T10   SDT                 "a + b * c"                     "a b c * +",
+                                                          t1 = b * c,
+                                                          t2 = a + t1
+T10b  SDT                 "id * id + id"                  "id id * id +",
+                                                          t1 = id * id,
+                                                          t2 = t1 + id
+T11   Compact arrows      no_space_arrow.txt              accepted; LL(1)
+T12   Optional symbol     optional_symbol.txt             accepted; LL(1)
+T12b  Optional parsing    "a b" and "b"                   both ACCEPTED
+T13   Left recursion      left_recursive.txt              NOT LL(1)
+
+Status: the suite ships with the project; run `make test` on any machine
+with gcc + make. (Note: the development sandbox used for the initial
+implementation has a broken system linker for this binary size - programs
+compile cleanly but do not link there; on normal machines `make` links
+and runs without issue. See section T for the build commands.)
+
+--------------------------------------------------------------------------------
+S. ERROR HANDLING
+--------------------------------------------------------------------------------
+
+Grammar-level (program exits non-zero, nothing downstream runs):
+  - missing '->' separator              (line-level, line number shown)
+  - more than one '->' separator
+  - empty left-hand side / multi-symbol LHS
+  - invalid left-hand side symbol
+  - empty alternative (check '|' placement)
+  - invalid symbol '<tok>'              (illegal characters)
+  - '#' must be the only symbol of its alternative
+  - '$' is reserved as the end marker
+  - too many productions / alternatives / RHS symbols
+  - non-terminal 'X' is used but never defined
+  - grammar has no productions / no productions supplied
+
+Pipeline-level:
+  - FIRST/FOLLOW/table report "not validated / mismatched input"
+    instead of computing on inconsistent data.
+  - capacity checks before filling the table (rows, columns).
+
+Parser-level (parse aborts safely, position and expectation shown):
+  - Unexpected token '<tok>' (position N) / Expected: '<terminal>'
+  - No parsing-table entry for [X, a] + "Expected one of: ..."
+  - Unexpected token after the parse was complete (trailing input)
+  - token that is not a terminal of the grammar
+  - too many input tokens / token too long
+  - parse stack overflow / step limit exceeded (no infinite loops)
+
+Translation-level:
+  - semantic stack overflow/underflow reported via lastError
+  - too many temporaries / three-address lines
+  - postfix buffer overflow
+
+No input is able to cause a crash: every buffer write is bounded and
+checked, and the parse loop has a hard step cap.
+
+--------------------------------------------------------------------------------
+T. BUILD AND EXECUTION
+--------------------------------------------------------------------------------
+
+Requirements: gcc (C99), make (optional but recommended), sh (for tests).
+
+Build:        make                     (or: gcc -std=c99 -Wall -Wextra
+                                        -pedantic -O2 -Iinclude src/*.c
+                                        -o ll1)
+Run demo:     make run                 (standard grammar + demo inputs)
+Test suite:   make test                (sh testcases/run_tests.sh)
+Clean:        make clean
+
+Menu mode:    ./ll1
+Pipeline:     ./ll1 grammar.txt        then type input strings
+Stdin mode:   ./ll1 - < grammar.txt
+
+Environment note: the machine used during initial development (an MSYS2
+sandbox) had a defective system linker that corrupted larger binaries;
+all modules still compile cleanly there with -Wall -Wextra -pedantic.
+On standard Linux/Windows gcc setups `make` builds and runs normally -
+verify with `make test`.
+
+--------------------------------------------------------------------------------
+U. REVIEW 1 STATUS  (as of this specification)
+--------------------------------------------------------------------------------
+
+Completed and integrated modules:
+    Grammar processing + validation ...... DONE (24bce0092)
+    FIRST computation .................... DONE (24bde0155)
+    FOLLOW computation ................... DONE (24bce0556)
+    Parsing table + LL(1) conflicts ...... DONE (24bci0103)
+    Predictive parser .................... DONE (24BDS0044)
+    Syntax-directed translation .......... DONE (24BDS0044)
+    Integration (main.c, menu, pipeline) . DONE (shared)
+    Test suite + testcase files .......... DONE (shared)
+    Architecture/format documentation .... DONE (shared)
+
+Review 1 demonstration flow (matches section C of the rubric):
+    show grammar input -> symbol identification -> FIRST -> FOLLOW ->
+    table -> conflict verdict -> parse trace of "id + id * id" ->
+    postfix + TAC of "a + b * c"; then the invalid-grammar and
+    non-LL(1) cases from section R.
+
+Each member owns and can explain one module (section Y) plus the
+pipeline as a whole; every member also contributed test cases and
+documentation for their module.
+
+--------------------------------------------------------------------------------
+V. REVIEW 2 PLAN
+--------------------------------------------------------------------------------
+
+The full pipeline required for Review 2 is implemented, so the remaining
+work is polish and verification on the team's own machines:
+  - run `make test` everywhere and record Actual Output / Pass-Fail
+    into the report's test table;
+  - capture screenshots for docs/screenshots/ (menu, pipeline, trace,
+    conflict report, translation);
+  - each member commits their module under feature/* branches (Rule 16)
+    - the working tree is intentionally left uncommitted so owners
+      claim their own work;
+  - expand diagnostics wording if viva feedback requests it, without
+    changing interfaces.
+
+--------------------------------------------------------------------------------
+W. FINAL PROJECT FEATURES
+--------------------------------------------------------------------------------
+
+  1. Generic grammar reader with three input modes and full validation
+  2. Automatic terminal/non-terminal classification
+  3. Automatic FIRST sets (fixed point, epsilon-aware, recursion-safe)
+  4. Automatic FOLLOW sets (Rules 1-3, fixed point)
+  5. Automatic LL(1) parsing table (production references, not text)
+  6. LL(1) conflict detection with detailed reporting
+  7. Table-driven predictive parsing with a textbook-style trace
+  8. Positioned, human-readable syntax diagnostics
+  9. Syntax-directed translation: postfix + three-address code
+ 10. Interactive menu AND automatic pipeline
+ 11. Automated integration test suite (19 checks in run_tests.sh)
+ 12. Centralized limits, modular files, owner attribution, docs
+
+--------------------------------------------------------------------------------
+X. KNOWN LIMITATIONS
+--------------------------------------------------------------------------------
+
+  - Fixed-size arrays everywhere (limits in section I); no dynamic
+    memory, so very large grammars/inputs are rejected safely instead
+    of being handled.
+  - No automatic left-recursion elimination or left factoring; such
+    grammars are reported NOT LL(1) rather than transformed.
+  - Grammar syntax is line-oriented and space-separated (documented);
+    no lexer layer, so multi-character terminals like "id" are just
+    whitespace-separated words.
+  - The SDT shape rules cover the standard operator-encoding pattern
+    (the documented scheme); RHS shapes outside it translate as plain
+    concatenation (echo) rather than failing - documented behavior.
+  - Trace/semantic buffers are capped; extremely long inputs truncate
+    the trace (with a notice) or stop the translation with an error.
+  - Only LL(1): no conflict resolution heuristics, no LR fallback.
+  - The '$' column of the table is implicit (not printed as a grammar
+    terminal) but is fully functional for both table entries and input.
+
+--------------------------------------------------------------------------------
+Y. TEAM CONTRIBUTIONS
+--------------------------------------------------------------------------------
+
+24bce0092   Module 1: grammar processing and validation
+            (grammar.h/.c), grammar format documentation.
+24bde0155   Module 2: FIRST computation (first.h/.c) incl.
+            firstOfSequence reused downstream.
+24bce0556   Module 3: FOLLOW computation (follow.h/.c).
+24bci0103   Module 4: parsing table + LL(1) conflict detection
+            (parsing_table.h/.c).
+24BDS0044   Module 5 + 6: predictive parser (parser.h/.c) and
+            syntax-directed translation (translation.h/.c).
+Shared:     constants.h/utils.h architecture, main.c integration,
+            testcases + run_tests.sh, README and docs, final review.
+
+Every member is expected to: commit their own module under their own
+account on a feature/* branch, add at least one testcase for their
+module, document their module, and be able to explain it in the viva.
+
+--------------------------------------------------------------------------------
+Z. IMPORTANT EXAMPLE  (expected program output; verified by T01/T08/T10)
+--------------------------------------------------------------------------------
+
+Grammar input:
+    E -> T Ep
+    Ep -> + T Ep | #
+    T -> F Tp
+    Tp -> * F Tp | #
+    F -> ( E ) | id
+
+Computed FIRST sets (program output; matches the locked course spec):
+    FIRST(E) = { (, id }
+    FIRST(Ep) = { +, # }
+    FIRST(T) = { (, id }
+    FIRST(Tp) = { *, # }
+    FIRST(F) = { (, id }
+
+Computed FOLLOW sets:
+    FOLLOW(E) = { ), $ }
+    FOLLOW(Ep) = { ), $ }
+    FOLLOW(T) = { +, ), $ }
+    FOLLOW(Tp) = { +, ), $ }
+    FOLLOW(F) = { +, *, ), $ }   (elements in stable sorted order)
+
+LL(1) analysis:
+    No LL(1) conflicts detected.
+    Grammar is LL(1).
+
+Parsing "id + id * id" (trace excerpt; "match" rows omitted for brevity):
+    Step  Stack          Input           Action
+    ----------------------------------------------------
+    1     $ E            id + id $       E -> T Ep
+    2     $ Ep T         id + id $       T -> F Tp
+    3     $ Ep Tp F      id + id $       F -> id
+    ...   (match id, Tp -> #, Ep -> + T Ep, match +, ...)
+    25    $              $               accept
+    Result: INPUT ACCEPTED
+
+Syntax-directed translation of "a + b * c":
+    Postfix: a b c * +
+    Three-address code:
+      t1 = b * c
+      t2 = a + t1
+
+Conflict example (S -> a A | a B, A -> b, B -> c):
+    Conflict detected at M[S, a]
+    Production 1: S -> a A
+    Production 2: S -> a B
+    Grammar is NOT LL(1).
+
+================================================================================
+End of PROJECT_SPECIFICATION.txt
+================================================================================
