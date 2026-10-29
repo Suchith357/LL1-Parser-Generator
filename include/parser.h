@@ -80,12 +80,36 @@ typedef void (*ParserActionFn)(void *ctx, ParserActionKind kind,
                                int lhsIndex, int altIndex,
                                const char *terminal);
 
+/* Additive step-recorder (used by the JSON export mode, see
+ * tools/json_main.c + src/json_export.c; off by default). Fires ONCE
+ * per trace row, BEFORE the step mutates the stack or the input, so the
+ * callback observes the pre-action configuration:
+ *   ps        - stack inputPos etc. (markers may sit in ps->stack slots)
+ *   isMarker  - parallel to ps->stack; skip stack[i] where isMarker[i]
+ *   actionText- the trace action column ("E -> T Ep", "match id",
+ *               "accept")
+ * Error exits fire no callback; callers build the failing step from
+ * ps->lastError + ps stack/inputPos (filter empty-string marker slots). */
+typedef void (*ParserStepFn)(void *ctx, const ParserState *ps,
+                             const unsigned char *isMarker,
+                             const char *actionText);
+
 /* As parserRun(), but additionally fires `action(actionCtx, ...)` at the
  * SHIFT/REDUCE/ACCEPT points. Pass action == NULL for plain parsing. */
 int  parserRunWithActions(const Grammar *grammar,
                           const ParsingTable *table,
                           ParserState *ps,
                           ParserActionFn action, void *actionCtx,
+                          char *traceOut, size_t traceSize);
+
+/* Same loop as parserRunWithActions, additionally recording every trace
+ * row through stepFn/stepCtx (additive; default OFF for all existing
+ * callers). */
+int  parserRunRecordSteps(const Grammar *grammar,
+                          const ParsingTable *table,
+                          ParserState *ps,
+                          ParserActionFn action, void *actionCtx,
+                          ParserStepFn stepFn, void *stepCtx,
                           char *traceOut, size_t traceSize);
 
 #endif /* PARSER_H */

@@ -200,10 +200,14 @@ static void traceStep(char *traceOut, size_t traceSize, size_t *used,
  * Parse loop
  * ====================================================================== */
 
-int parserRunWithActions(const Grammar *grammar,
+/* Implementation shared by parserRunWithActions() and the additive
+ * parserRunRecordSteps() step-recorder. stepFn (may be NULL) fires one
+ * callback per trace row BEFORE the step mutates the stack/input. */
+static int parserRunImpl(const Grammar *grammar,
                          const ParsingTable *table,
                          ParserState *ps,
                          ParserActionFn action, void *actionCtx,
+                         ParserStepFn stepFn, void *stepCtx,
                          char *traceOut, size_t traceSize) {
     size_t used = 0;
     int truncated = 0;
@@ -272,6 +276,9 @@ int parserRunWithActions(const Grammar *grammar,
             if (strcmp(current, endMarker) == 0) {
                 traceStep(traceOut, traceSize, &used, &truncated, ps,
                           isMarker, "accept");
+                if (stepFn != NULL) {
+                    stepFn(stepCtx, ps, isMarker, "accept");
+                }
                 ps->accepted = 1;
                 if (action != NULL) {
                     action(actionCtx, PARSER_ACTION_ACCEPT,
@@ -293,6 +300,9 @@ int parserRunWithActions(const Grammar *grammar,
                 snprintf(actionText, sizeof(actionText), "match %s", top);
                 traceStep(traceOut, traceSize, &used, &truncated, ps,
                           isMarker, actionText);
+                if (stepFn != NULL) {
+                    stepFn(stepCtx, ps, isMarker, actionText);
+                }
                 if (action != NULL) {
                     action(actionCtx, PARSER_ACTION_SHIFT,
                            INVALID_INDEX, INVALID_INDEX, top);
@@ -376,6 +386,9 @@ int parserRunWithActions(const Grammar *grammar,
                  prod->lhs, altTextRaw);
         traceStep(traceOut, traceSize, &used, &truncated, ps, isMarker,
                   actionText);
+        if (stepFn != NULL) {
+            stepFn(stepCtx, ps, isMarker, actionText);
+        }
 
         ps->stackTop--; /* pop the non-terminal */
 
@@ -423,6 +436,25 @@ int parserRunWithActions(const Grammar *grammar,
                     "...(trace truncated)\n");
     }
     return 1; /* accepted */
+}
+
+int parserRunWithActions(const Grammar *grammar,
+                         const ParsingTable *table,
+                         ParserState *ps,
+                         ParserActionFn action, void *actionCtx,
+                         char *traceOut, size_t traceSize) {
+    return parserRunImpl(grammar, table, ps, action, actionCtx,
+                         NULL, NULL, traceOut, traceSize);
+}
+
+int parserRunRecordSteps(const Grammar *grammar,
+                         const ParsingTable *table,
+                         ParserState *ps,
+                         ParserActionFn action, void *actionCtx,
+                         ParserStepFn stepFn, void *stepCtx,
+                         char *traceOut, size_t traceSize) {
+    return parserRunImpl(grammar, table, ps, action, actionCtx,
+                         stepFn, stepCtx, traceOut, traceSize);
 }
 
 int parserRun(const Grammar *grammar,

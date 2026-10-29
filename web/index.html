@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="graphite">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ParseLab — Watch a grammar become a parser</title>
+<link rel="stylesheet" href="css/styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230E1116'/%3E%3Cpath d='M9 11h14M9 16h9M9 21h5' stroke='%232DD4BF' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<a class="skip-link" href="#stage-content">Skip to stage panel</a>
+
+<!-- ============================================================ header -->
+<header class="topbar" role="banner">
+  <div class="brand">
+    <svg class="brand-mark" width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="7" fill="var(--surface-2)" stroke="var(--border)"/>
+      <path d="M9 11h14M9 16h9M9 21h5" stroke="var(--primary)" stroke-width="2.4" stroke-linecap="round"/>
+    </svg>
+    <div class="brand-text">
+      <span class="brand-name">ParseLab</span>
+      <span class="brand-tagline">Watch a grammar become a parser.</span>
+    </div>
+  </div>
+
+  <div class="topbar-actions">
+    <span id="conn-pill" class="pill conn-unknown" role="status" aria-live="polite">
+      <span class="conn-dot" aria-hidden="true"></span>Checking engine…
+    </span>
+    <button id="btn-save"   class="btn btn-ghost btn-sm" type="button">Save</button>
+    <button id="btn-load"   class="btn btn-ghost btn-sm" type="button">Load</button>
+    <button id="btn-export" class="btn btn-ghost btn-sm" type="button">Export</button>
+    <input id="file-load" type="file" accept="application/json,.json" hidden>
+    <button id="btn-theme"  class="btn btn-ghost btn-sm" type="button"
+            aria-pressed="false" title="Switch theme">Paper</button>
+    <button id="btn-help"   class="btn btn-ghost btn-sm" type="button"
+            aria-haspopup="dialog">Help</button>
+    <button id="btn-restart" class="btn btn-danger-ghost btn-sm" type="button">Start over</button>
+  </div>
+</header>
+
+<!-- =========================================================== workspace -->
+<main class="workspace" id="workspace">
+
+  <!-- -------- left pane: grammar editor (always visible) -------------- -->
+  <aside class="editor-pane" id="editor-pane" aria-label="Grammar editor">
+    <div class="editor-head">
+      <h2 class="pane-title">Grammar</h2>
+      <div class="editor-tools">
+        <div class="select-wrap">
+          <label class="visually-hidden" for="examples">Load example grammar</label>
+          <select id="examples" class="input input-sm">
+            <option value="">Load example…</option>
+          </select>
+        </div>
+        <button id="btn-epsilon" class="btn btn-ghost btn-sm" type="button"
+                title="Insert the engine's epsilon symbol # at the cursor"># ε</button>
+      </div>
+    </div>
+
+    <div class="editor-body">
+      <div class="editor" id="editor-wrap">
+        <div class="gutter" id="gutter" aria-hidden="true"></div>
+        <div class="editor-stack">
+          <pre class="hl" id="hl" aria-hidden="true"><code id="hl-code"></code></pre>
+          <label class="visually-hidden" for="grammar-input">Grammar text</label>
+          <textarea id="grammar-input" class="grammar-textarea" spellcheck="false"
+                    autocomplete="off" autocapitalize="off" wrap="off"
+                    placeholder="Paste a grammar or load an example to begin."></textarea>
+        </div>
+      </div>
+      <p id="editor-empty" class="empty-note">Paste a grammar or load an example to begin.</p>
+
+      <div class="editor-foot">
+        <button id="btn-validate" class="btn btn-secondary btn-sm" type="button">Validate</button>
+        <button id="btn-analyze" class="btn btn-primary btn-sm" type="button">
+          Analyze grammar<span class="kbd-hint">Ctrl+↵</span></button>
+      </div>
+      <div id="summary-line" class="summary-line" role="status" aria-live="polite"></div>
+      <ul id="validation-list" class="validation-list" aria-live="polite"></ul>
+      <div id="heads-up" class="heads-up"></div>
+    </div>
+  </aside>
+
+  <div class="pane-divider" id="pane-divider" role="separator"
+       aria-orientation="vertical" aria-label="Resize grammar pane"
+       tabindex="0"></div>
+
+  <!-- -------- right pane: stepper + active stage ---------------------- -->
+  <section class="stage-pane" aria-label="Pipeline stages">
+    <nav class="stepper" id="stepper" aria-label="Pipeline">
+      <button class="step-btn" data-stage="analysis" type="button"
+              aria-current="false">
+        <span class="step-ico" aria-hidden="true"></span>
+        <span class="step-label">Analysis</span>
+        <span class="step-sub">FIRST / FOLLOW</span>
+      </button>
+      <span class="step-arrow" aria-hidden="true"></span>
+      <button class="step-btn" data-stage="table" type="button" aria-current="false">
+        <span class="step-ico" aria-hidden="true"></span>
+        <span class="step-label">Parsing Table</span>
+        <span class="step-sub">M[A, a]</span>
+      </button>
+      <span class="step-arrow" aria-hidden="true"></span>
+      <button class="step-btn" data-stage="parse" type="button" aria-current="false">
+        <span class="step-ico" aria-hidden="true"></span>
+        <span class="step-label">Parse</span>
+        <span class="step-sub">predictive parser</span>
+      </button>
+      <span class="step-arrow" aria-hidden="true"></span>
+      <button class="step-btn" data-stage="translate" type="button" aria-current="false">
+        <span class="step-ico" aria-hidden="true"></span>
+        <span class="step-label">Translate</span>
+        <span class="step-sub">postfix · TAC</span>
+      </button>
+    </nav>
+
+    <div class="stage-scroll" id="stage-scroll">
+      <div id="stale-banner" class="banner banner-warn" hidden>
+        Grammar changed. Re-analyze to refresh results.
+      </div>
+
+      <section class="stage" id="stage-analysis" aria-labelledby="stage-analysis-h">
+        <div class="stage-head">
+          <h2 id="stage-analysis-h">Analysis — FIRST and FOLLOW sets</h2>
+          <button class="btn btn-ghost btn-sm whats-this" type="button"
+                  data-note="analysis">What is this stage?</button>
+        </div>
+        <div class="stage-body" id="analysis-body"></div>
+      </section>
+
+      <section class="stage" id="stage-table" aria-labelledby="stage-table-h" hidden>
+        <div class="stage-head">
+          <h2 id="stage-table-h">Predictive parsing table</h2>
+          <button class="btn btn-ghost btn-sm whats-this" type="button"
+                  data-note="table">What is this stage?</button>
+        </div>
+        <div class="stage-body" id="table-body"></div>
+      </section>
+
+      <section class="stage" id="stage-parse" aria-labelledby="stage-parse-h" hidden>
+        <div class="stage-head">
+          <h2 id="stage-parse-h">Predictive parser</h2>
+          <button class="btn btn-ghost btn-sm whats-this" type="button"
+                  data-note="parse">What is this stage?</button>
+        </div>
+        <div class="stage-body" id="parse-body"></div>
+      </section>
+
+      <section class="stage" id="stage-translate" aria-labelledby="stage-translate-h" hidden>
+        <div class="stage-head">
+          <h2 id="stage-translate-h">Syntax-directed translation</h2>
+          <button class="btn btn-ghost btn-sm whats-this" type="button"
+                  data-note="translate">What is this stage?</button>
+        </div>
+        <div class="stage-body" id="translate-body"></div>
+      </section>
+
+      <aside class="summary-card" id="summary-card" aria-label="Session summary">
+        <button id="summary-toggle" class="summary-toggle" type="button"
+                aria-expanded="false">Session summary</button>
+        <div id="summary-content" class="summary-content" hidden></div>
+      </aside>
+    </div>
+  </section>
+</main>
+
+<!-- ============================================================ footer -->
+<footer class="statusbar" role="contentinfo">
+  <span id="status-ll1" class="badge">No analysis yet</span>
+  <span id="status-counts" class="muted"></span>
+  <span id="status-last" class="muted"></span>
+  <span id="status-progress" class="progress-strip" aria-hidden="true"></span>
+</footer>
+
+<!-- aria-live announcer -->
+<div id="announcer" class="visually-hidden" role="status" aria-live="polite"></div>
+<div id="announcer-alert" class="visually-hidden" role="alert" aria-live="assertive"></div>
+
+<!-- modals -->
+<dialog id="modal" class="modal" aria-labelledby="modal-title">
+  <form method="dialog"><h2 id="modal-title"></h2>
+    <div id="modal-body" class="modal-body"></div>
+    <div class="modal-actions" id="modal-actions"></div>
+  </form>
+</dialog>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

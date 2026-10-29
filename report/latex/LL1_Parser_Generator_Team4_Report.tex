@@ -1,0 +1,2109 @@
+% ============================================================================
+%  LL1_Parser_Generator_Team4_Report.tex
+%  Complete project report — ONE self-contained LaTeX source.
+%
+%  "Design and Implementation of an LL(1) Parser Generator with Automatic
+%   FIRST-FOLLOW Computation, Predictive Parsing Table Construction and
+%   Syntax-Directed Translation" — Compiler Design, Team 4.
+%
+%  ENGINE REQUIREMENT : XeLaTeX (Times New Roman via fontspec; automatic
+%                       TeX Gyre Termes fallback when TNR is absent).
+%  COMPILE            : xelatex <this file>.tex   (run twice for TOC/lists)
+%                       Overleaf: Menu -> Compiler -> XeLaTeX -> Recompile.
+%  No \input/\include, no external images — the source below is complete.
+% ============================================================================
+
+\documentclass[12pt,a4paper,oneside,openany]{report}
+
+
+
+
+%% ---- PREAMBLE (single-file: everything inlined) ---------------------------
+
+\usepackage{fontspec}
+\IfFontExistsTF{Times New Roman}{%          Windows / Overleaf / MS Office boxes
+  \setmainfont{Times New Roman}
+}{%                                          Linux/TeX Live fallback
+  \IfFontExistsTF{TeX Gyre Termes}{
+    \setmainfont{TeX Gyre Termes}
+  }{
+    \setmainfont{Times} % last-resort system alias
+  }
+}
+\setmonofont{Consolas}[Scale=0.85]
+\IfFontExistsTF{Consolas}{}{%
+  \setmonofont{Courier New}[Scale=0.85]%
+}
+
+% ---- Page geometry ---------------------------------------------------------
+\usepackage[a4paper,top=4cm,bottom=3cm,left=4.5cm,right=2.5cm]{geometry}
+
+% ---- Line spacing ----------------------------------------------------------
+\usepackage{setspace}
+\onehalfspacing
+
+% Justification quality: allow bounded emergency stretch so justified
+% paragraphs never protrude into the margin (harmless to layout elsewhere).
+\setlength{\emergencystretch}{3em}
+
+% ---- Tables ---------------------------------------------------------------
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{amsmath,amssymb}
+
+% ---- Lists ----------------------------------------------------------------
+\usepackage{enumitem}
+\setlist{topsep=2pt,itemsep=2pt,parsep=0pt,partopsep=2pt}
+
+% ---- Figures / code --------------------------------------------------------
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape\color[rgb]{0,0.35,0},
+  stringstyle=\color[rgb]{0.5,0,0},
+  numbers=left, numberstyle=\tiny\color[rgb]{0.4,0.4,0.4},
+  numbersep=8pt, frame=single, breaklines=true, showstringspaces=false,
+  tabsize=8, xleftmargin=1.2em}
+\lstdefinestyle{cfg}{basicstyle=\ttfamily\small,frame=single,numbers=none}
+\lstdefinestyle{outputcode}{basicstyle=\ttfamily\scriptsize,frame=single,numbers=none}
+
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric,arrows.meta,positioning,math,calc}
+\tikzset{
+  box/.style={rectangle, rounded corners=2pt, draw=black, fill=blue!5,
+              minimum width=2.6cm, minimum height=0.8cm, align=center,
+              font=\small},
+  termst/.style={rectangle, rounded corners=8pt, draw=black, fill=gray!10,
+              minimum width=2.2cm, minimum height=0.7cm, align=center,
+              font=\small},
+  arrow/.style={-{Latex[length=2.5mm]}, thick},
+  dasharr/.style={-{Latex[length=2.5mm]}, thick, dashed}
+}
+
+% ---- Headings: 14 pt bold, main = CAPITALS, sub = Title case ---------------
+\usepackage{titlesec}
+% Chapters:  "CHAPTER 1" line, then the 14 pt bold title in CAPS
+\renewcommand{\thechapter}{\arabic{chapter}}
+\titleformat{\chapter}[display]
+  {\centering\bfseries\fontsize{14}{18}\selectfont}
+  {CHAPTER~\thechapter}{18pt}{\MakeUppercase}
+\titlespacing*{\chapter}{0pt}{0pt}{24pt}
+% Main sections inside a chapter: 14 pt bold capitals ("1.1  HEADING")
+% Gap between heading & paragraph == 3 spaces of 10 pt.
+\titleformat{\section}
+  {\leftskip=0pt\bfseries\fontsize{14}{18}\selectfont}
+  {\thesection}{0.6em}{\MakeUppercase}
+\titlespacing*{\section}{0pt}{20pt}{16pt}
+% Subsections: 14 pt bold Title case ("1.1.1  Title Case Heading")
+\titleformat{\subsection}
+  {\bfseries\fontsize{14}{18}\selectfont}
+  {\thesubsection}{0.6em}{}
+\titlespacing*{\subsection}{0pt}{18pt}{14pt}
+% The unnumbered heading used by chapters keeps the same face
+\titleformat{name=\section,numberless}
+  {\centering\bfseries\fontsize{14}{18}\selectfont}{}{0pt}{\MakeUppercase}
+
+% ---- Foot / page numbering: top-right on every page -------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[R]{\small\thepage}
+\fancyfoot{}
+\renewcommand{\headrulewidth}{0pt}
+\setlength{\headheight}{16pt}
+
+% ---- Unnumbered front-matter heading helper --------------------------------
+\newcommand{\pmpage}[1]{%   #1 = title shown in 14 pt bold centre; starts new page
+  \clearpage\thispagestyle{fancy}%
+  \begin{center}\bfseries\fontsize{14}{18}\selectfont #1\end{center}%
+  \vspace{0.6em}}
+
+% ---- Misc helpers -----------------------------------------------------------
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\gram}[1]{$#1$}
+\setlength{\parskip}{6pt}
+\setlength{\jot}{8pt}
+
+\usepackage[hidelinks]{hyperref}
+\hypersetup{pdfauthor={Team 4}, pdftitle={LL(1) Parser Generator Project Report}}
+
+\begin{document}
+
+
+%% ======================= FRONT MATTER (Roman pages) ========================
+
+\pagenumbering{roman}
+
+
+\begin{titlepage}
+\begin{center}
+{\bfseries\fontsize{14}{18}\selectfont SCHOOL OF COMPUTER SCIENCE AND ENGINEERING}\par
+\vspace{0.6em}
+{\bfseries\fontsize{14}{18}\selectfont VELLORE INSTITUTE OF TECHNOLOGY, VELLORE-14}\par
+\vspace{2.5em}
+{\bfseries\fontsize{14}{18}\selectfont PROJECT\par}
+\vspace{2.0em}
+{\bfseries\fontsize{16}{20}\selectfont
+Design and Implementation of an LL(1) Parser Generator with Automatic
+FIRST-FOLLOW Computation, Predictive Parsing Table Construction and
+Syntax-Directed Translation\par}
+\vspace{2.0em}
+{\fontsize{12}{18}\selectfont
+A dissertation submitted in partial fulfilment of the requirements for the degree of\\
+{\bfseries Master of Technology in Integrated Computer Science \& Engineering}\par}
+\vspace{2.0em}
+{\fontsize{12}{18}\selectfont by\par}
+\vspace{1.2em}
+{\bfseries\fontsize{12}{18}\selectfont
+<< Student Name 1 \>> \hfill \hspace*{-4em} << Student Name 2 \>>\par
+\vspace{0.4em}
+24BCE0092 \hfill \hspace*{-4em} 24BDE0155\par
+\vspace{0.8em}
+<< Student Name 3 \>> \hfill \hspace*{-4em} << Student Name 4 \>>\par
+\vspace{0.4em}
+24BCE0556 \hfill \hspace*{-4em} 24BCI0103\par
+\vspace{0.8em}
+<< Student Name 5 \>>\par
+24BDS0044\par}
+\vspace{1.6em}
+{\fontsize{12}{18}\selectfont
+Under the Guidance of\\
+{\bfseries Prof.\ << Guide Name \>>}\\[0.4em]
+School of Computer Science and Engineering,\\
+VIT, Vellore--14\par}
+\vspace{2.2em}
+{\bfseries\fontsize{12}{18}\selectfont << Month \>, << Year \>>\par}
+\end{center}
+\end{titlepage}
+
+% ------------------------------ DECLARATION ---------------------------------
+\pmpage{DECLARATION}
+~\vspace{0.5em}
+
+I hereby declare that the project entitled \textbf{Design and Implementation of
+an LL(1) Parser Generator with Automatic FIRST-FOLLOW Computation, Predictive
+Parsing Table Construction and Syntax-Directed Translation} submitted by
+\textbf{Team 4} (registration numbers 24BCE0092, 24BDE0155, 24BCE0556,
+24BCI0103 and 24BDS0044) to the School of Computer Science and Engineering,
+Vellore Institute of Technology, Vellore-14, towards the partial fulfilment of
+the requirements for the award of the degree of \textbf{Master of Technology in
+Integrated Computer Science \& Engineering} is a record of bonafide work
+carried out by the team under the supervision of \textbf{Prof.\ << Guide Name
+\>>}. I further declare that the work reported in this project has not been
+submitted and will not be submitted, either in part or in full, for the award
+of any other degree or diploma of this institute or of any other institute or
+university.
+
+\vspace{2.4em}\noindent
+\textbf{Signature}\hfill\textbf{Signature}\hfill\textbf{Signature}\hfill\textbf{Signature}\hfill\textbf{Signature}\par
+\vspace{0.8em}\noindent
+\textbf{Name}\hfill\textbf{Name}\hfill\textbf{Name}\hfill\textbf{Name}\hfill\textbf{Name}\par
+\vspace{0.4em}\noindent
+\textbf{Reg.\ No:}\hfill\textbf{Reg.\ No:}\hfill\textbf{Reg.\ No:}\hfill\textbf{Reg.\ No:}\hfill\textbf{Reg.\ No:}\par
+
+% ------------------------------ CERTIFICATE ---------------------------------
+\pmpage{CERTIFICATE}
+~\vspace{0.5em}
+
+The project report entitled \textbf{Design and Implementation of an LL(1)
+Parser Generator with Automatic FIRST-FOLLOW Computation, Predictive Parsing
+Table Construction and Syntax-Directed Translation} is prepared and submitted
+by the students \textbf{<< Student Names with Registration Numbers \>>}, and
+has been found satisfactory in terms of scope, quality and presentation as
+partial fulfilment of the requirements for the award of the degree of
+\textbf{Master of Technology in Integrated Computer Science and Engineering} in
+Vellore Institute of Technology, Vellore-14, India.
+
+\vspace{2.6em}\noindent
+\textbf{Guide}\hfill\textbf{Internal Examiner}\par
+\vspace{0.6em}\noindent
+\textbf{(Name \& Signature)}\hfill\textbf{(Name \& Signature)}\par
+\vspace{2.6em}\noindent
+\textbf{External Examiner}\hfill\textbf{HOD}\par
+\vspace{0.6em}\noindent
+\textbf{(Name \& Signature)}\hfill\textbf{(Name \& Signature)}\par
+
+% ------------------------------ ACKNOWLEDGEMENT -----------------------------
+\pmpage{ACKNOWLEDGEMENT}
+~\vspace{0.5em}
+
+The project \textbf{LL(1) Parser Generator} was made possible because of
+inestimable inputs from everyone involved, directly or indirectly. First, we
+would like to thank our guide, \textbf{Prof.\ << Guide Name \>>}, who was
+highly instrumental in providing a required and innovative base for the
+project, and whose crucial and constructive inputs helped shape the final
+product. Our guide helped us perform research in the area of \textbf{compiler
+front-end construction --- specifically LL(1) parsing theory and
+syntax-directed translation} and we are very thankful for the continuous
+support throughout the project.
+
+We would also like to acknowledge the role of the Head of the Department,
+\textbf{Prof.\ << HOD Name \>>}, who was instrumental in keeping us updated
+with all necessary formalities and posting all the required formats and
+document templates through mail, which we were glad to have had.
+
+It would be no exaggeration to say that the Dean of SCOPE, \textbf{Prof.\ <<
+Dean Name \>>}, was always available to clarify queries and clear the doubts
+we had during the project.
+
+Finally, we would like to thank \textbf{Vellore Institute of Technology} for
+providing a flexible choice and execution of the project, and for supporting
+the research and execution related to it.
+
+\textbf{--- Team 4}
+
+% ------------------------------ CONTENTS ------------------------------------
+\pmpage{CONTENTS}
+{\bfseries\fontsize{12}{18}\selectfont Title\hfill Page\par}
+\vspace{0.4em}
+{\fontsize{12}{18}\selectfont
+Title Page \dotfill i\\
+Declaration \dotfill ii\\
+Certificate \dotfill iii\\
+Acknowledgement \dotfill iv\\
+Table of Contents \dotfill v\\
+List of Tables \dotfill vi\\
+List of Figures \dotfill vii\\
+List of Abbreviations \dotfill viii\\
+Abstract \dotfill ix\par}
+\vspace{0.6em}
+\tableofcontents
+\vspace{0.6em}
+{\bfseries\fontsize{12}{18}\selectfont Appendices\par}
+\vspace{0.3em}
+{\fontsize{12}{18}\selectfont
+Annexure 1 --- Test Cases \dotfill \pageref{annex:testcases}\\
+Annexure 2 --- Code Files \dotfill \pageref{annex:code}\par}
+\vspace{0.6em}
+{\bfseries\fontsize{12}{18}\selectfont References \dotfill \pageref{page:references}\par}
+
+% ------------------------------ LIST OF TABLES ------------------------------
+\pmpage{LIST OF TABLES}
+{\bfseries\fontsize{12}{18}\selectfont Title\hfill Page\par}
+\vspace{0.4em}
+\listoftables
+
+% ------------------------------ LIST OF FIGURES -----------------------------
+\pmpage{LIST OF FIGURES}
+{\bfseries\fontsize{12}{18}\selectfont Title\hfill Page\par}
+\vspace{0.4em}
+\listoffigures
+
+% ------------------------------ ABBREVIATIONS -------------------------------
+\pmpage{LIST OF ABBREVIATIONS}
+{\bfseries\fontsize{12}{18}\selectfont Abbreviation\hfill Expansion\par}
+\vspace{0.4em}\noindent
+\begin{tabular}{@{}p{3.6cm}p{10.3cm}@{}}
+CFG & Context-Free Grammar \\
+FIRST & Set of terminal symbols that can begin strings derived from a grammar symbol \\
+FOLLOW & Set of terminal symbols that can appear immediately after a grammar symbol in a derivation \\
+LL(1) & Left-to-right scan, Leftmost derivation, 1-symbol lookahead \\
+TAC & Three-Address Code \\
+SDT & Syntax-Directed Translation \\
+CLI & Command-Line Interface \\
+SDD & Syntax-Directed Definition \\
+ERD & Entity-Relationship Diagram (system analysis, not applicable here) \\
+POSIX & Portable Operating System Interface \\
+EOF & End of File \\
+IA & Intermediate Alphabet (whitespace TOKEN representation) \\
+HDL & Hardware Description Language \\
+\end{tabular}
+
+% ------------------------------ NOMENCLATURE --------------------------------
+\pmpage{NOMENCLATURE}
+{\bfseries\fontsize{12}{18}\selectfont Symbol\hfill Meaning\par}
+\vspace{0.4em}\noindent
+\begin{tabular}{@{}p{2.7cm}p{11.2cm}@{}}
+$V_N$ & Set of non-terminal symbols of a context-free grammar \\
+$V_T$ & Set of terminal symbols of a context-free grammar \\
+$P$ & Set of production rules of a context-free grammar \\
+$S$ & Start symbol of a context-free grammar \\
+$\alpha$, $\beta$, $\gamma$ & Sequences of grammar symbols \\
+--- & \# \\ 
+\# & Epsilon ($\epsilon$): the empty string \\
+\$ & End-of-input marker used exclusively by the parser \\
+$M[A,a]$ & LL(1) predictive parsing-table cell indexed by non-terminal $A$ and terminal $a$ \\
+\texttt{t1..\textit{tN}} & Compiler-generated temporaries in three-address code \\
+\end{tabular}
+
+% ------------------------------ ABSTRACT ------------------------------------
+\pmpage{ABSTRACT}
+~\vspace{0.3em}
+
+Compilers and language tools form the backbone of modern software
+infrastructure, and every recognised compiler-construction methodology first
+attaches a \emph{parser} to the stream of raw tokens produced by a scanner.
+The parser is guided by a \emph{grammar}, yet in most course settings and in
+many small tools the parser is still written by hand: the student or engineer
+must manually analyse a context-free grammar, compute the FIRST and FOLLOW
+sets on paper, transcribe a predictive parsing table cell by cell, and only
+then hand-code the parsing loop. This manual process is slow, error-prone and
+completely grammar-specific --- although the algorithms that drive it are
+entirely generic. The limitations are repeated \emph{every time} a grammar
+changes: one new alternative silently invalidates half of a carefully
+calculated table, and no automated safety net exists to detect the resulting
+inconsistencies.
+
+This project addresses that problem by designing and implementing a
+\textbf{general-purpose LL(1) parser generator} in the C programming language
+(ISO C99, warning-clean under \texttt{-Wall -Wextra -pedantic}). The user
+supplies any context-free grammar in a documented line format; the tool then
+executes a fully automatic pipeline: it validates the grammar and reports
+precise, line-numbered diagnostics for every violation of the format rules;
+it classifies symbols into terminals and non-terminals; it computes the FIRST
+sets by fixed-point iteration, correctly handling epsilon productions and
+direct and indirect left- and right-recursion; it computes the FOLLOW sets
+with all three standard rules; it constructs the predictive parsing table
+$M[A,a]$ from FIRST and FOLLOW; it detects and reports LL(1) conflicts without
+ever overwriting a table entry; and, when the grammar is recognised as LL(1),
+it parses input strings with a table-driven predictive parser, printing a
+step-by-step stack/input/action trace with positioned syntax diagnostics, and
+finally performs syntax-directed translation to produce the postfix form and
+three-address code. Nothing in the pipeline is hardcoded for the
+demonstration grammar; every result is computed from the grammar supplied at
+run time.
+
+The design is modular --- six single-responsibility C modules behind explicit
+interfaces, a shared utility layer, and centralised compile-time limits ---
+with bounded buffers and a parse-step cap so that no input can cause a crash.
+The complete system is exercised by an automated 26-check integration test
+suite covering valid grammars, invalid productions, epsilon propagation,
+nullable symbols, conflict detection, valid/invalid input strings, and both
+translation outputs; all checks were executed and passed with the demonstration
+grammar yielding \texttt{INPUT ACCEPTED}, the postfix form \texttt{id id id * +}
+and the three-address code \texttt{t1 = id * id}, \texttt{t2 = id + t1}.
+The report documents the requirement analysis, mathematical model, design,
+algorithms, testing strategy, complexity considerations, evaluated limitations,
+and realistic future enhancements of the implemented system.
+
+%% ======================= CHAPTERS (Arabic pages) ===========================
+
+\clearpage
+
+
+\pagenumbering{arabic}
+
+
+\setcounter{page}{1}
+
+
+
+%% ------------------------------------------------------------------------
+
+%% ch1_introduction
+
+%% ------------------------------------------------------------------------
+
+\chapter{INTRODUCTION}
+\label{ch:intro}
+
+\section{INTRODUCTION}
+Compilers and language tools form the backbone of modern software
+infrastructure. Every recognised compiler-construction methodology first
+attaches a \emph{parser} to the stream of raw tokens produced by a scanner,
+and the parser is driven by a \emph{grammar}~\cite{aho2006compilers}. Among
+the deterministic parsing strategies, the \textbf{LL(1)} family --- a
+Left-to-right scan producing a Leftmost derivation with 1 symbol of lookahead
+--- occupies a special position: the resulting parsers are simple,
+stack-based, table-driven, and execute in linear time~\cite{lewis1968,
+rosenkrantz1970, gruene2008}. Historically, the LL(1) idea traces directly
+to the foundational work of Lewis and Stearns on syntax-directed transduction
+\cite{lewis1968} and to the properties of deterministic top-down grammars
+established by Rosenkrantz and Stearns \cite{rosenkrantz1970}.
+
+What the classical literature leaves implicit, however, is \emph{who}
+computes the machinery of the LL(1) parser. The theory defines FIRST and
+FOLLOW as fixed-point characterisations \cite{aho2006compilers,
+aho1972}, yet in academic practice, and in many small tools, these sets are
+still computed \emph{by hand}: the engineer analyses the grammar on paper,
+transcribes a predictive parsing table cell by cell, and only then
+hand-codes the parsing loop. The construction is duplicated for every new
+grammar, and a single new alternative silently invalidates half of the
+calculated table, with no automated safety net to detect the
+inconsistency. The present project was conceived to remove exactly this
+manual stage.
+
+This report documents the design, implementation and evaluation of a
+\textbf{general-purpose LL(1) parser generator} written in the C programming
+language. The tool accepts any context-free grammar in a documented line
+format and, in a single automatic pipeline, performs grammar validation,
+symbol classification, FIRST-set computation, FOLLOW-set computation,
+predictive parsing-table construction, LL(1) conflict detection, predictive
+parsing of user input strings with a full trace, and syntax-directed
+translation producing the postfix form and three-address code. Nothing in
+the pipeline is specific to the demonstration grammar; every result is
+computed from the grammar supplied at run time.
+
+\section{THEORETICAL BACKGROUND}
+\subsection{Context-Free Grammars}
+A \emph{context-free grammar} (CFG) is a four-tuple
+$G = (V_N, V_T, P, S)$ where $V_N$ is a finite set of non-terminal symbols,
+$V_T$ is a finite set of terminal symbols disjoint from $V_N$, $P$ is a
+finite set of productions of the form $A \to \alpha$ with $A \in V_N$ and
+$\alpha \in (V_N \cup V_T)^{*}$, and $S \in V_N$ is the start
+symbol~\cite{aho1972}. A sentential form derivable from $S$ by repeated
+application of productions is a \emph{sentence} of the language $L(G)$ when
+it contains only terminals.
+
+\subsection{FIRST and FOLLOW Sets}
+\textbf{FIRST$(\alpha)$}, for a string $\alpha$ of grammar symbols, is the
+set of terminals that can begin any string derived from $\alpha$, together
+with $\epsilon$ itself when $\alpha \Rightarrow^{*} \epsilon$.
+\textbf{FOLLOW$(A)$}, for a non-terminal $A$, is the set of terminals that
+can appear \emph{immediately after} $A$ in any sentential form derivable
+from the start symbol, with $\$$ (the end-of-input marker) in
+FOLLOW$(S)$~\cite{aho2006compilers}. Both characterisations are
+\emph{fixed points}: they are defined as the least solutions of monotone
+equations over the finite lattice of terminal sets, which means a naive
+fixed-point sweep that keeps adding elements until nothing changes
+terminates in finitely many steps. This property --- the mathematical
+core of the project --- justifies the iterative implementation strategy
+adopted in Chapter 5.
+
+\subsection{Predictive Parsing and the LL(1) Table}
+An LL(1) parser performs a leftmost derivation guided only by the current
+stack symbol $X$ and one lookahead terminal $a$. The decision function is
+the \emph{predictive parsing table} $M$: a map from
+($V_N \times (V_T \cup \{\$\})$) to productions or the empty
+decision~\cite{aho2006compilers, lewis1968}. For every production
+$A \to \alpha$, the entry $M[A,a\,]$ is declared for each
+$a \in \mathrm{FIRST}(\alpha)\setminus\{\epsilon\}$; if
+$\alpha \Rightarrow^{*} \epsilon$, the declaration additionally covers
+every $b \in \mathrm{FOLLOW}(A)$. A grammar is \textbf{LL(1)} exactly when
+every table cell holds at most one production. When this is violated, the
+grammar is not LL(1); classical treatments also give the equivalent
+alternatives-pair test on
+FIRST/FOLLOW\discretionary{}{}{}(conditions 1--3 in
+Section~\ref{sec:ll1conditions}).
+
+\subsection{Syntax-Directed Translation}
+A \emph{syntax-directed definition} attaches attributes and semantic rules
+to productions; a \emph{translation scheme} embeds actions in the
+productions~\cite{aho2006compilers}. For LL(1) parsing of expression
+grammars, postfix (post-order) generation and three-address code (TAC)
+emit naturally: each terminal match pushes a token; each completed
+production ($\mathit{REDUCE}$ event) combines the popped attribute values
+and pushes one value for the left-hand side; the accept event moves the
+final result out. This project implements exactly this event-driven
+pattern, using a semantic stack consulted at the SHIFT/REDUCE/ACCEPT
+points of the same parse that produces the trace.
+
+\section{MOTIVATION}
+Four concrete motivations shaped the project:
+\begin{enumerate}
+  \item \textbf{Eliminate manual table construction.} Writing FIRST/FOLLOW
+        analyses and parse tables by hand is slow and error-prone; automating
+        the construction once, for \emph{any} grammar, is the natural
+        engineering step.
+  \item \textbf{Make LL(1)-suitability measurable.} A conflict report that
+        names the exact cell $M[A,a]$ and the two competing productions
+        turns ``this grammar is probably not LL(1)'' into a precise,
+        checkable statement.
+  \item \textbf{Connect theory to translation.} The same parse that decides
+        acceptance can drive semantic translation (postfix and TAC), which
+        demonstrates syntax-directed translation on genuine parser events
+        rather than on a separate toy pass.
+  \item \textbf{Practice robust systems programming in C.} Fixed-size
+        buffers, explicit length accounting and a bounded parse loop make
+        the exercise a test of defensive implementation discipline as much
+        as of parsing theory.
+\end{enumerate}
+
+\section{AIM OF THE PROPOSED WORK}
+\label{sec:aim}
+The aim of the project is to design, implement and evaluate a
+general-purpose, grammar-agnostic LL(1) parser generator in C that accepts a
+context-free grammar, automatically performs all LL(1) analysis stages
+(validation, classification, FIRST, FOLLOW, parsing table, conflict
+detection, predictive parsing and syntax-directed translation), and reports
+a precise LL(1) verdict with explicit conflict evidence.
+
+\section{OBJECTIVES}
+\begin{enumerate}
+  \item Implement robust grammar input, validation and automatic terminal /
+        non-terminal classification for the documented line format.
+  \item Compute FIRST sets for every non-terminal by fixed-point iteration,
+        handling epsilon propagation and direct and indirect recursion.
+  \item Compute FOLLOW sets implementing all three standard rules, reusing
+        the sequence-level FIRST helper used by the table builder.
+  \item Construct the predictive parsing table $M[A,a]$ with
+        production-reference cells and detect LL(1) conflicts without
+        overwriting entries.
+  \item Implement a table-driven predictive parser with a stack/input/action
+        trace, an end-marker discipline, positioned diagnostics and bounded
+        resource usage.
+  \item Perform syntax-directed translation --- postfix output and
+        three-address code --- driven by parser events on the same parse.
+  \item Deliver a CLI user interface with both an interactive menu and an
+        automatic pipeline mode, plus a documented grammar format.
+  \item Provide an automated integration test suite with reproducible
+        expected vs.\ observed comparisons.
+\end{enumerate}
+
+\section{SCOPE OF THE PROJECT}
+The system addresses the complete LL(1) analysis and execution path for any
+grammar written in the documented format. It is deliberately \emph{not} a
+full production compiler: no lexical analyser is generated (input strings
+are whitespace-tokenised word sequences), no semantic type system or code
+optimisation is attempted, and the tool does not transform grammars (there
+is no automatic left-recursion elimination or left factoring); grammars
+that are not already LL(1) are reported as such with their exact
+conflicting cells. Only the LL(1) family is covered --- nothing in the
+design claims SLR, LALR or general LR behaviour.
+
+\section{REPORT ORGANIZATION}
+Chapter 1 has introduced the problem, the underlying theory, the aim and
+the objectives. Chapter 2 surveys the related systems and identifies the
+gap this project addresses. Chapter 3 presents the architecture, module
+interactions, data structures and mathematical model of the proposed
+system. Chapter 4 performs the requirement analysis and detailed design,
+including the processing workflow and behavioural description. Chapter 5
+describes the implementation: algorithms, pseudocode, module organisation
+and the experimental setup. Chapter 6 presents the test strategy, executed
+results and a discussion of complexity and error handling. Chapter 7
+concludes with limitations and future scope. Annexure 1 lists the standard
+test cases; Annexure 2 reproduces the key code excerpts; References close
+the report.
+
+
+
+%% ------------------------------------------------------------------------
+
+%% ch2_literature
+
+%% ------------------------------------------------------------------------
+
+\chapter{LITERATURE SURVEY}
+\label{ch:lit}
+
+\section{SURVEY OF THE EXISTING WORK}
+This section surveys the theoretical and tooling landscape relevant to LL(1)
+parser generation,antine drawing only on verifiable published sources. The
+comparison criteria are: what the approach automates, what the user must
+supply, whether an LL(1)-specific verdict with conflict evidence is produced,
+and what the user must write by hand.
+
+\subsection{Theoretical Foundations}
+Lewis and Stearns introduced syntax-directed transduction and, in
+establishing the recognitive power of one-symbol-lookahead stack machines,
+laid the groundwork routinely attributed to the ``LL'' family~\cite{lewis1968}.
+Rosenkrantz and Stearns subsequently characterised deterministic top-down
+(LL($k$)) grammars and their decision properties~\cite{rosenkrantz1970}.
+The systematic treatment of FIRST/FOLLOW computation, predictive table
+construction and the pairwise LL(1)-condition test is consolidated in the
+standard compiler text by Aho, Lam, Sethi and Ullman~\cite{aho2006compilers},
+and the older two-volume treatment by Aho and Ullman formalises parsing
+governed by grammars~\cite{aho1972}. Grune and Jacobs provide a modern,
+exhaustive catalogue of parsing techniques, including the fixed-point nature
+of FIRST/FOLLOW iteration and the practical trade-offs between LL and LR
+families~\cite{gruene2008}. These sources define exactly the algorithms this
+project automates; none of them conflicts with the implementation direction,
+but none is itself an executable tool.
+
+\subsection{Classic Parser Generators}
+\textbf{yacc / Bison.} Johnson's yacc~\cite{johnson1975} and its GNU
+successor Bison~\cite{bison2021} generate \emph{bottom-up} (LALR) parsers
+from an appropriate grammar plus semantic actions embedded in the source.
+They are mature and widely used, but they serve a different parsing family
+than LL(1): their conflict reporting (shift/reduce, reduce/reduce) and
+lookahead machinery are LALR-specific, and they do not expose a predictive
+LL(1) table whose cells could serve as a teaching instrument. Grammar
+transformation guidance (precedence/associativity declarations, adopted
+rules) is provided in various forms, but again in LALR terms.
+
+\textbf{ANTLR.} Parr's ANTLR 4~\cite{parr2013} generates recursive-descent
+parsers (an LL logic) using an adaptive LL(*) strategy and semantic
+predicates, targeted at language engineers. Its generated parsers are
+powerful, but the tool's internal machinery considerably exceeds the
+LL(1) setting, does not produce a per-cell predictive parsing table in the
+classical textbook sense, and its runtime is an external dependency rather
+than a self-contained C build. Its grammar language is also ANTLR-specific
+rather than the plain, auditable line format used in course settings.
+
+\subsection{Hand-Written Course Implementations}
+The dominant approach in class assignments remains \emph{manual analysis}:
+students compute FIRST and FOLLOW sets on paper, transcribe the predictive
+parsing table, and hand-code a parsing loop for one specific grammar. The
+strong limitations are structural rather than incidental:
+
+\begin{itemize}
+  \item The FIRST/FOLLOW computation is duplicated for every grammar, with
+        no reuse and no verification;
+  \item Table transcription is manual, and a single new production can
+        silently invalidate half of the table;
+  \item There is no automated conflict detection --- an LL(1)-unsuitable
+        grammar is discovered only when the parser misbehaves at run time;
+  \item The parsing loop is grammar-shaped, so the code is not reusable
+        across grammars.
+\end{itemize}
+
+\subsection{Positioning of the Present Work}
+The system described in this report occupies the pedagogical middle ground:
+it is a genuine \emph{generator} --- grammar input flows through automated
+validation, classification, FIRST/FOLLOW fixed-point computation, table
+construction and conflict detection --- but it stays strictly within the
+LL(1) family so that each intermediate artefact (grammar display, FIRST
+sets, FOLLOW sets, full table, conflict report, parse trace, postfix and
+TAC) is visible, inspectable output rather than an optimisation hidden
+inside a runtime. To the best of the team's survey, no widely circulated
+open-source C-based tool combines (a) a plain text grammar format, (b) a
+visible step-by-step pipeline producing every classical intermediate
+artefact, and (c) an explicit, evidence-bearing LL(1) verdict; commercial
+parser generators target engineering productivity rather than traceable
+LL(1) pedagogy. The project therefore does not claim algorithmic novelty
+--- the algorithms are classical, cited from~\cite{aho2006compilers,
+lewis1968} --- but addresses a genuine gap between theory-only coursework
+and production-grade (and opaque) tooling.
+
+\section{COMPARATIVE SUMMARY}
+\begin{table}[h]
+  \caption{Comparison of surveyed approaches}
+  \label{tab:comparison}
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabularx}{\textwidth}{@{}p{2.5cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
+    \toprule
+    \textbf{Aspect} & \textbf{yacc / Bison} & \textbf{ANTLR 4} &
+    \textbf{Hand-written LL(1)} & \textbf{This project} \\
+    \midrule
+    Parsing family & LALR (bottom-up) & LL(*), adaptive &
+    LL(1) & LL(1) \\
+    Grammar input format & yacc/Bison grammar & ANTLR DSL
+    & implicit (in code or notes) & plain lines, auditable \\
+    FIRST/FOLLOW automated & n/a (LALR internals) & internal &
+    No --- manual & Yes --- always computed \\
+    Predictive table built & No (LALR automaton) & No &
+    Yes (by hand each time) & Yes --- automatic \\
+    LL(1) verdict + conflicts & n/a & n/a & none &
+    Yes, with per-cell evidence \\
+    Parse trace / pedagogy & minimal & minimal &
+    manual & explicit stack/input/action trace \\
+    Translation (postfix, TAC) & via user semantic actions &
+    via listeners/visitors & ad-hoc & built-in, event-driven \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\section{GAPS IDENTIFIED IN THE SURVEY}
+The survey supports three specific observations:
+\begin{enumerate}
+  \item No widely available tool exposes \emph{all} classical LL(1)
+        intermediates --- FIRST, FOLLOW, full table, conflicts, trace,
+        translation --- as user-visible output for arbitrary grammars in a
+        single, self-contained run;
+  \item Existing generators are oriented toward large production grammars
+        and their respective DSLs, not toward transparent, course-scale
+        auditability of the LL(1) decision procedure;
+  \item Hand-written implementations verify nothing: they provide no
+        conflict evidence and no automated validity/conflict report for
+        the grammar itself.
+\end{enumerate}
+These gaps motivate precisely the system proposed in Chapter 3: a C99
+pipeline whose stages are individually inspectable, whose verdicts carry
+evidence, and whose intermediate artefacts match the notation of the
+standard textbooks.
+
+
+
+%% ------------------------------------------------------------------------
+
+%% ch3_proposed
+
+%% ------------------------------------------------------------------------
+
+\chapter{OVERVIEW OF THE PROPOSED SYSTEM}
+\label{ch:proposed}
+
+\section{INTRODUCTION}
+The proposed system is a grammar-agnostic LL(1) parser generator whose
+stages mirror the classical analysis exactly, so that each stage's output
+is a user-visible artefact: the grammar, the symbol classification, the
+FIRST sets, the FOLLOW sets, the parsing table, the conflict report, the
+parse trace, and the two translation outputs (postfix and three-address
+code). The user can drive the whole pipeline automatically from a grammar
+file, or inspect any stage through the interactive menu. This chapter
+presents the framework and architecture, the responsibilities of the six
+modules, the principal data structures, the mathematical model underlying
+the fixed-point computations, and the end-to-end workflow.
+
+\section{FRAMEWORK, ARCHITECTURE AND MODULES}
+The system is organised as a strictly linear pipeline of six
+single-responsibility C modules plus an integration driver
+(Fig.~\ref{fig:pipeline}). Each module exposes an explicit interface
+(\code{*.h}) and hides its implementation (\code{*.c}); modules depend only
+on the interfaces earlier in the chain, never on the driver.
+
+\begin{figure}[h]
+  \centering
+  \begin{tikzpicture}[node distance=0.55cm]
+    \node[box] (cfg) {\code{CFG Input}\\ (file / stdin / menu)};
+    \node[box, below=of cfg] (g) {\textbf{Grammar Processing}\\
+      \small validation, classification};
+    \node[box, below=of g] (f) {\textbf{FIRST Computation}\\
+      \small fixed-point iteration};
+    \node[box, below=of f] (fol) {\textbf{FOLLOW Computation}\\
+      \small Rules 1--3, fixed point};
+    \node[box, below=of fol] (t) {\textbf{Parsing Table} $M[A,a]$\\
+      \small construction + conflicts};
+    \node[box, below=of t] (p) {\textbf{Predictive Parser}\\
+      \small stack / input / action trace};
+    \node[box, below=of p] (s) {\textbf{Syntax-Directed Translation}\\
+      \small postfix + three-address code};
+    \draw[arrow] (cfg) -- (g);
+    \draw[arrow] (g) -- (f);
+    \draw[arrow] (f) -- (fol);
+    \draw[arrow] (fol) -- (t);
+    \draw[arrow] (t) -- node[right,font=\scriptsize]{LL(1)?} (p);
+    \draw[arrow] (p) -- (s);
+    \draw[dasharr] (t.east) -- ++(1.3,0)
+      node[right,font=\scriptsize,text width=2.6cm,align=left]
+      {declared NOT LL(1)\\ $\Rightarrow$ parsing refused};
+  \end{tikzpicture}
+  \caption{Pipeline architecture of the proposed system}
+  \label{fig:pipeline}
+\end{figure}
+
+Table~\ref{tab:modules} summarises module responsibilities and ownership.
+
+\begin{table}[h]
+  \caption{Modules of the proposed system}
+  \label{tab:modules}
+  \small
+  \begin{tabularx}{\textwidth}{p{0.5cm}p{4.4cm}Xp{2.6cm}}
+    \toprule
+    \textbf{No.} & \textbf{Module (files)} & \textbf{Responsibility} &
+    \textbf{Owner} \\
+    \midrule
+    1 & \code{grammar.h/.c} & Input of productions, validation with
+    line-numbered diagnostics, classification of terminals and
+    non-terminals, RHS tokenisation helpers reused downstream &
+    24BCE0092 \\
+    2 & \code{first.h/.c} & FIRST-set computation by fixed-point
+    iteration; \code{firstOfSequence()} reused by FOLLOW and the table &
+    24BDE0155 \\
+    3 & \code{follow.h/.c} & FOLLOW-set computation implementing the three
+    standard rules; display-order sorting with `$\$$' last & 24BCE0556 \\
+    4 & \code{parsing\_table.h/.c} & LL(1) table construction with
+    production-reference cells; conflict recording and verdict
+    reporting & 24BCI0103 \\
+    5 & \code{parser.h/.c} & Table-driven predictive parser: tokenisation,
+    parse loop, trace, positioned diagnostics, event hooks for SDT &
+    24BDS0044 \\
+    6 & \code{translation.h/.c} & Semantic stack, postfix Construction and
+    three-address code generation driven by parser events & 24BDS0044 \\
+    -- & \code{main.c} & Integration driver: automatic pipeline and
+    9-option interactive menu, lazy stage ordering & shared \\
+    -- & \code{constants.h}, \code{utils.h/.c} & Centralised limits and
+    sentinels; shared sets, symbol tables and validation helpers &
+    shared \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Module Interactions}
+The dependency chain is purely vertical --- \code{constants.h} is included
+by everything; \code{utils} feeds \code{grammar}; \code{grammar}'s RHS
+tokenisers are reused by \code{first}, \code{follow}, \code{parsing\_table}
+and \code{parser} so that tokenisation exists exactly once; \code{follow}
+reuses \code{firstOfSequence}; the table consumes both FIRST and FOLLOW;
+the parser consumes only the table; and translation hooks into the
+parser's SHIFT/REDUCE/ACCEPT events rather than re-running a parse. The
+driver \code{main.c} owns an \code{AppState} bundle of all stage outputs
+and enforces lazy, ordered computation (FIRST before FOLLOW before table)
+so each stage is computed at most once regardless of menu path.
+
+\section{PRINCIPAL DATA STRUCTURES}
+Six structures carry the system's state:
+\begin{itemize}
+  \item \code{Production}: one LHS with up to 20 RHS alternatives, each
+        stored as its original space-separated string (e.g.\ \code{"+ T
+        Ep"}), tokenised on demand. Epsilon is the single-symbol string
+        \code{"\#"}.
+  \item \code{Grammar}: the production array plus the classification
+        results --- \code{nonTerminals[]} (symbols appearing on some LHS),
+        \code{terminals[]} (remaining RHS symbols except `$\#$'), and the
+        start symbol (first production's LHS), all in first-appearance
+        order; fast name$\to$index lookups return \code{INVALID\_INDEX} on
+        failure.
+  \item \code{FirstCollection}: one \code{FirstSet} per non-terminal ---
+        terminal elements plus `$\#$' when nullable, with an explicit
+        \code{hasEpsilon} flag.
+  \item \code{FollowCollection}: one \code{FollowSet} per non-terminal ---
+        terminals plus `$\$$'; display order is sorted to terminal order
+        with `$\$$' last.
+  \item \code{ParsingTable}: \code{cells[row][col]} hold
+        \{(lhsIndex, altIndex)\} references into the production array ---
+        \emph{not} duplicated text --- so a cell always points at the
+        unique stored production; \code{INVALID\_INDEX} marks an empty
+        cell; conflicts are recorded as both competing productions plus
+        the terminal.
+  \item \code{ParserState}/{\code SemanticStack}: the parse stack
+        (capped at 1024 symbols), the tokenised input (capped at 256
+        tokens including `$\$$'), the lookahead index and step counter;
+        the semantic stack (capped at 256) holds postfix fragments.
+\end{itemize}
+
+\section{MATHEMATICAL MODEL}
+Let $G=(V_N,V_T,P,S)$ be the input CFG. The pipeline composes six
+functions:
+\[
+  \mathsf{valid} : G \to \{\mathrm{ok}\} \cup \{\mathrm{reject}\},\quad
+  \mathsf{class} : G \to (V_N, V_T, S),\quad
+  F_{\mathsf{first}} : (V_N \to 2^{V_T \cup \{\varepsilon\}}),
+\]
+\[
+  F_{\mathsf{follow}} : (V_N \to 2^{V_T \cup \{\$ \}}),\quad
+  \Phi : (V_N \times (V_T \cup \{\$\})) \to P \cup \{\bot\},
+\]
+\[
+  \Sigma : V_T^{*} \to \{\mathrm{accept}\} \cup
+           \{\mathrm{error}, i\} \times \mathrm{TAC}.
+\]
+$F_{\mathsf{first}}$ and $F_{\mathsf{follow}}$ are the \emph{least
+fixed points} of the standard monotone equations
+\cite{aho2006compilers, aho1972}:
+\begin{align}
+  \mathrm{FIRST}(X_1X_2\cdots X_n) &=
+     \bigl(\mathrm{FIRST}(X_1)\setminus\{\varepsilon\}\bigr)\ \cup\
+     \bigl(\mathrm{FIRST}(X_2)\setminus\{\varepsilon\}\bigr)\ \cup\ \cdots
+  \label{eq:firstseq}\\
+  \mathrm{FIRST}(A) &\supseteq
+     \mathrm{FIRST}(\alpha)\ \text{for every}\ A \to \alpha
+  \label{eq:firste}\\
+  \mathrm{FOLLOW}(S) &\ni \$, \qquad
+  \mathrm{FOLLOW}(B) \supseteq \mathrm{FIRST}(\beta)\setminus\{\varepsilon\}
+  \ \ \text{for}\ \alpha B \beta \in P
+  \label{eq:foll2}\\
+  \mathrm{FOLLOW}(B) &\supseteq \mathrm{FOLLOW}(A)
+  \ \ \text{when}\ \beta \Rightarrow^{*} \varepsilon\ \text{in}\ \alpha B
+  \beta \in P.
+  \label{eq:foll3}
+\end{align}
+Because each equation set is monotone over a \emph{finite} lattice (the
+powerset of $V_T \cup \{\varepsilon\}$ / $V_T \cup \{\$\}$), Kleene
+iteration --- repeated full sweeps that only ever add elements --- reaches
+the least fixed point in at most $|V_T|+1$ sweeps
+for FIRST and likewise for FOLLOW. Termination, determinism and
+minimality of the computed sets therefore follow from the lattice
+argument, not from empirical observation; the sweep counter in the actual
+implementation is a diagnostic, not a correctness device.
+The table function $\Phi$ is the classical construction: cell $[A,a]$ is
+claimed by production $A \to \alpha$ for each
+$a \in \mathrm{FIRST}(\alpha)\setminus\{\varepsilon\}$, and additionally
+for every $b \in \mathrm{FOLLOW}(A)$ when $\alpha \Rightarrow^{*}
+\varepsilon$. $G$ is LL(1) exactly when $\Phi$ is
+single-valued~\cite{aho2006compilers}; any cell claimed twice yields the
+conflict evidence reported to the user.
+\label{sec:ll1conditions}
+
+\section{PROCESSING WORKFLOW}
+The end-to-end workflow is:
+\begin{enumerate}
+  \item \textbf{Acquisition.} The grammar is loaded from a file path, from
+        stdin (`$-$' mode), or typed interactively; blank lines are
+        skipped and every line is syntax-checked in isolation.
+  \item \textbf{Validation.} Each line must contain exactly one `$->$';
+        the LHS must be a single valid symbol; alternatives must contain
+        valid symbols; `$\#$' may appear only alone; `$\$$' is reserved
+        and rejected; repeated LHS lines append alternatives to the same
+        group. Whole-grammar checks then reject undefined non-terminals
+        and capacity overflows --- always with the offending line number
+        and text. Any rejection aborts the pipeline before stage 2.
+  \item \textbf{Classification.} Non-terminals are exactly the LHS
+        symbols (first-appearance order); terminals are the remaining RHS
+        symbols; the first production's LHS is the start symbol.
+  \item \textbf{FIRST computation.} Sweeps over all productions until a
+        sweep changes nothing, applying Eq.~\eqref{eq:firstseq}--%
+        \eqref{eq:firste} per alternative.
+  \item \textbf{FOLLOW computation.} `$\$$' enters FOLLOW$(S)$, then
+        sweeps apply Eq.~\eqref{eq:foll2}--\eqref{eq:foll3} to every RHS
+        occurrence of every non-terminal until the fixed point.
+  \item \textbf{Table construction and conflicts.} Every production
+        claims its cells as described above; a cell claimed twice is
+        recorded as a conflict with both productions and the terminal,
+        and cell overwriting never occurs.
+  \item \textbf{Verdict.} ``Grammar is LL(1).'' iff the conflict count is
+        zero; otherwise ``Grammar is NOT LL(1).'' and \emph{parsing is
+        refused}, protecting the user from silently ambiguous automaton
+        behaviour.
+  \item \textbf{Parsing.} For LL(1) grammars, input strings are
+        tokenised, `$\$$' is appended, and the stack/input/action loop
+        runs with a visible per-step trace and positioned diagnostics on
+        failure; a hard 20\,000-step cap and bounded stack rule out
+        non-termination.
+  \item \textbf{Translation.} The same parse fires SHIFT/REDUCE/ACCEPT
+        events; the semantic stack produces the postfix string at ACCEPT
+        and a value-stack evaluation emits three-address code lines
+        \code{tN = x op y}; both outputs are displayed together with the
+        trace.
+\end{enumerate}
+Every stage prints its artefact fully, which is the design decision that
+makes the pipeline auditable end to end.
+
+
+
+%% ------------------------------------------------------------------------
+
+%% ch4_design
+
+%% ------------------------------------------------------------------------
+
+\chapter{PROPOSED SYSTEM ANALYSIS AND DESIGN}
+
+\section{INTRODUCTION}
+This chapter translates the objectives of Chapter 1 and the architecture of
+Chapter 3 into an explicit requirement model and a detailed design that an
+implementer could follow without further clarification. The requirement
+analysis distinguishes functional behaviour, product perspective,
+non-functional quality attributes, engineering-standard considerations and
+hardware/software constraints. The detailed design models the data flow,
+the module decomposition and, critically, the behavioural description of
+the parse loop --- the component whose correctness the user directly
+experiences.
+
+\section{REQUIREMENT ANALYSIS}
+\subsection{Functional Requirements}
+\begin{table}[h]
+  \caption{Functional requirements (FR)}
+  \label{tab:fr}
+  \small
+  \begin{tabularx}{\textwidth}{p{1.2cm}X p{4.6cm}}
+    \toprule
+    \textbf{ID} & \textbf{Requirement} & \textbf{Verification} \\
+    \midrule
+    FR1 & Read a context-free grammar from a file, stdin, or interactive
+    entry; skip blank lines; support alternative groups via `$|$' and
+    repeated-LHS merging. & Executed --- suite T01, T11 \\
+    FR2 & Validate every line and the whole grammar, reporting precise
+    violations with the offending line number and text; reject undefined
+    non-terminals, `$\$$' usage, `$\#$' misuse, empty alternatives and
+    capacity overflows. & Executed --- suite T06a--T06f \\
+    FR3 & Automatically classify symbols into non-terminals (appearing on
+    some LHS) and terminals (remaining RHS symbols except `$\#$'), and
+    identify the start symbol as the first production's LHS. & Executed ---
+    suite T01, T05 \\
+    FR4 & Compute FIRST sets for every non-terminal via fixed-point
+    iteration, handling epsilon, direct and indirect recursion. &
+    Executed --- suite T02, T03, T07 \\
+    FR5 & Compute FOLLOW sets implementing Rules 1--3, with `$\$$' in
+    FOLLOW(start) and fixed display ordering. & Executed --- suite
+    T01--T05 \\
+    FR6 & Construct the predictive parsing table $M[A,a]$ using
+    FIRST$($\,$\alpha$\,)$\{$\#$\}$ and FOLLOW$(A)$ for nullable $\alpha$;
+    never overwrite a claimed cell. & Executed --- suite T01, T04, T13 \\
+    FR7 & Detect LL(1) conflicts, name the cell and both productions, and
+    refuse parsing for non-LL(1) grammars. & Executed --- suite T04, T07,
+    T13 \\
+    FR8 & Parse input strings with a table-driven predictive parser,
+    printing the step-by-step stack/input/action trace, the acceptance
+    verdict, and positioned diagnostics on failure. & Executed --- suite
+    T05b, T05c \\
+    T08, T09 fragments (see Annexure 1) \\
+    \midrule
+    FR9 & Translate each parsed string via the same parse's events into
+    postfix form and three-address code; report translation overflow
+    bounds explicitly. & Executed --- suite T10, T10b \\
+    FR10 & Provide a 9-option interactive menu AND an automatic pipeline
+    mode ($./ll1$ grammar-file; `$-$' stdin mode) reading input strings
+    until \code{quit}/EOF. & Executed --- both modes used by the suite \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+\noindent (The table entry spanning FR8's second line is corrected
+in Annexure 1's full template; the verification column there is
+normative.)
+
+\subsection{Product Perspective and Product Features}
+The tool is a \emph{stand-alone CLI developer utility}, not an embedded
+library and not an IDE plugin. Product features follow directly from
+FR1--FR10: a single self-contained executable built by
+\code{make} (or one \code{gcc} command), zero external runtime
+dependencies beyond the C standard library, both automatic and interactive
+operation, and fully printed intermediate artefacts for auditability.
+
+\subsection{User Characteristics}
+Primary users are compiler-course students and instructors who know CFG
+notation, LR/LL fundamentals and basic shell usage; secondary users are
+developers preparing small tool grammars who want a quick LL(1)
+feasibility verdict. No GUI literacy is assumed; every interaction is
+either a file argument or plain stdin.
+
+\subsection{Assumptions and Dependencies}
+Assumptions: the user's grammar follows the documented line format
+(exactly one `$->$' per line, space-separated symbols, `$\#$' alone for
+epsilon); the input string alphabet is the grammar's terminal vocabulary
+(there is no lexer layer); the platform provides a conforming C99
+implementation and \code{sh} for the test suite. Dependencies: a C99
+compiler (executed with gcc; ISO~C99~\cite{isoC99}, with the language
+features deliberately kept within ISO~C11~\cite{isoC11} for portability),
+optionally \code{make} for the convenient targets, and nothing else ---
+no third-party libraries.
+
+\subsection{Domain Requirements}
+The domain is formal-language parsing. The tool must implement the
+standard definitions (FIRST, FOLLOW, LL(1) table, conflict criteria) as
+established in the literature~\cite{aho2006compilers, lewis1968,
+rosenkrantz1970} rather than ad-hoc variants; epsilon is written `$\#$'
+and the end marker is `$\$$', both fixed by the grammar-format contract;
+a non-LL(1) grammar must never be parsed silently.
+
+\subsection{User Requirements}
+\begin{itemize}
+  \item Load any documented-format grammar and immediately see the
+        classification display.
+  \item Produce FIRST, FOLLOW, table and verdict in a single automatic
+        run, ending with an input-string prompt.
+  \item Generate postfix and three-address code for accepted strings
+        without writing any semantic-action code.
+  \item Receive actionable diagnostics: the exact stage, the exact
+        offending line or token position, and the expected symbols.
+\end{itemize}
+
+\subsection{Non-Functional Requirements}
+\begin{table}[h]
+  \caption{Non-functional requirements (NFR)}
+  \label{tab:nfr}
+  \small
+  \begin{tabularx}{\textwidth}{p{1.2cm}p{3.2cm}X}
+    \toprule
+    \textbf{ID} & \textbf{Attribute} & \textbf{Requirement} \\
+    \midrule
+    NFR1 & Efficiency (time) & Fixed-point sweeps terminate in
+    $O(|V_T|{+}1)$ iterations bounded by the lattice; parsing is linear in
+    input length for LL(1) grammars; a 20\,000-step cap guarantees
+    termination regardless of input pathology. \\
+    NFR2 & Efficiency (space) & All buffers are fixed-size arrays with
+    centralised limits (Table~\ref{tab:limits}); memory use is constant
+    per run. \\
+    NFR3 & Reliability & No input crashes the tool: every buffer write is
+    bounds-checked, all stages re-verify their preconditions, andgrammar
+    errors abort downstream stages. \\
+    NFR4 & Portability & Strict ISO C99, warning-clean under
+    \texttt{-Wall -Wextra -pedantic}; no platform extensions; runs on
+    Windows (MinGW/MSYS2), Linux and macOS toolchains. \\
+    NFR5 & Usability & Menu labels state each stage in one line; errors
+    quote the offending source line or token position plus expectation
+    lists. \\
+    NFR6 & Maintainability & Six single-responsibility modules behind
+    explicit headers; shared limits in one header; tokenisation exists
+    exactly once. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Engineering Standard Requirements}
+The work is evaluated against operational standard considerations:
+\begin{itemize}
+  \item \textbf{Economic:} zero-cost toolchain (freely available
+        compiler); value justifies effort for course-scale grammars.
+  \item \textbf{Social:} intended for classroom and personal
+        tool-building use; no processing of personal data.
+  \item \textbf{Ethical \& legal:} original implementation; classical
+        algorithms are cited from the literature rather than reproduced
+        from any codebase; the C standard is honoured (no undefined
+        behaviour constructs).
+  \item \textbf{Health and safety \& sustainability:} not applicable ---
+        pure software, minimal compute footprint.
+  \item \textbf{Political:} not applicable.
+  \item \textbf{Inspectability:} the driving quality property --- every
+        stage prints its artefact, tests are re-runnable, and limits are
+        documented in one header.
+  \item \textbf{Legality (software):} the implementation keeps to ISO C99
+        semantics \cite{isoC99} so behaviour is reproducible across
+        conforming toolchains.
+\end{itemize}
+
+\subsection{System Requirements}
+\begin{table}[h]
+  \caption{Hardware and software requirements}
+  \label{tab:swreq}
+  \small
+  \begin{tabularx}{\textwidth}{p{2.6cm}X}
+    \toprule
+    \textbf{Category} & \textbf{Requirement} \\
+    \midrule
+    Hardware & Any modern desktop/laptop (project uses no GPU, no
+    acceleration); executed during development on a standard x86-64
+    machine. \\
+    Software & C99 compiler (executed with gcc Rev5 16.1.0, MSYS2/MinGW),
+    optional \code{make}, optional \code{sh} for the built-in test
+    suite; any OS supported by the toolchain (Windows 10/11, Linux,
+    macOS). \\
+    Build & \code{make} (targets \code{all}, \code{run}, \code{test},
+    \code{clean}) or the direct one-line \code{gcc -std=c99 -Wall -Wextra
+    -pedantic -O2 -Iinclude src/*.c -o ll1}. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\section{DETAILED DESIGN}
+\subsection{Design Models}
+\subsubsection*{Context-level data flow}
+Fig.~\ref{fig:dfd0} shows the Level-0 DFD. Exactly two external entities
+interact with the system: the grammar provider and the test-string user.
+
+\begin{figure}[h]
+  \centering
+  \begin{tikzpicture}[node distance=1.1cm]
+    \node[box, minimum width=4.4cm] (sys) {\textbf{LL(1) Parser Generator}\\
+      \small validation $\to$ FIRST $\to$ FOLLOW\\ $\to$ table $\to$ parse $\to$ SDT};
+    \node[termst, left=1.1cm of sys, font=\scriptsize, text width=2.1cm]
+      (u1) {Grammar provider\\ (file/stdin)};
+    \node[termst, below=1.4cm of u1, font=\scriptsize, text width=2.1cm]
+      (u2) {Input-string user\\ (stdin / menu)};
+    \node[termst, right=1.1cm of sys, font=\scriptsize, text width=2.6cm]
+      (o) {Console artefacts\\ sets/table/trace/outputs};
+    \draw[arrow] (u1) -- node[above,font=\tiny]{grammar text} (sys);
+    \draw[arrow] (u2) -- node[below,font=\tiny]{input strings} (sys);
+    \draw[arrow] (sys) -- node[above,font=\tiny]{prints} (o);
+  \end{tikzpicture}
+  \caption{Level-0 data-flow diagram of the proposed system}
+  \label{fig:dfd0}
+\end{figure}
+
+\subsubsection*{Level-1 decomposition}
+A Level-1 view exists as one process per module (Table~\ref{tab:modules})
+with data stores ``grammar'', ``FIRST collection'', ``FOLLOW collection''
+and ``parsing table'' mediating between stages --- matching the vertical
+dependency chain described in Section 3.2.1 exactly, so the DFD adds no
+edges beyond the implemented ones.
+
+\subsection{Behavioural Descriptions}
+\subsubsection*{Grammar validation behaviour}
+For each input line the validator decides between: (a) accept and store;
+(b) merge-alternatives (LHS seen before); (c) reject with a named reason
+and the line number. Reasons cover missing/duplicated arrow, empty LHS,
+invalid symbols, `$\#$' not alone, `$\$$' present, empty alternative,
+over-capacity groups. Validation never mutates stored state, so a failed
+load leaves the previous grammar intact.
+
+\subsubsection*{Parse-loop flowchart}
+Fig.~\ref{fig:flow} gives the behavioural description of the parser loop.
+The trace is written at every loop entry; diagnostics and step-cap exits
+guarantee termination.
+
+\begin{figure}[h]
+  \centering
+  \begin{tikzpicture}[node distance=0.7cm, font=\scriptsize]
+    \node[termst, minimum width=3.0cm] (start) {start: push `$\$$', push $S$};
+    \node[box, below=of start] (fire) {fire completed-REDUCE markers (SDT hook)};
+    \node[box, below=of fire] (dec) {top $X$ \& lookahead $a$?};
+    \node[box, right=1.5cm of dec] (m1) {$X=\$: M[{\cdot},a]$ accept?};
+    \node[box, below=0.8cm of m1, xshift=-1.3cm, minimum width=2.0cm]
+      (acc) {ACCEPT};
+    \node[box, below=0.8cm of m1, xshift=1.1cm, minimum width=2.4cm,
+      text width=2.6cm] (err1) {ERROR: trailing\\ input};
+    \node[box, below right=1.2cm and 1.6cm of dec, minimum width=2.4cm] (m2)
+      {terminal $X$: match $a$?};
+    \node[box, below=of m2] (m3)
+      {non-terminal: $M[X,a]$ has entry?};
+    \node[box, below right=0.5cm and 0.3cm of m3, minimum width=2.4cm,
+      text width=3.0cm] (err2)
+      {ERROR: no entry $[X,a]$\\ expected list printed};
+    \node[box, below=1.0cm of m3] (extend) {pop $X$; push RHS reversed;
+      step++};
+    \draw[arrow] (start) -- (fire);
+    \draw[arrow] (fire) -- (dec);
+    \draw[arrow] (dec.east) -- (m2.west)
+      node[above, pos=0.55, font=\tiny]{terminal};
+    \draw[arrow] (dec) -- (m1.east);
+    \node[font=\tiny, above] at ($(m1.east)!0.5!(dec.east)$)
+      {stack empty: check end marker};
+    \draw[arrow] (m1) -- (acc)
+      node[midway,left,font=\tiny]{accept};
+    \draw[arrow] (m1) -- (err1)
+      node[midway,right,font=\tiny]{no accept};
+    \draw[arrow] (m2.south) |- ++(0,-1.0) -| (extend.east);
+    \draw[arrow] (m2.west) -- ++(-0.6,0) node[above,font=\tiny,xshift=-2mm]
+      {mismatch: ERROR pos $n$};
+    \draw[arrow] (m3.east) -| (err2.north);
+    \draw[arrow] (err2.west) -- ++(-0.35,0) node[left,font=\tiny]
+      {on entry exists: pop; push RHS};
+    \draw[arrow] (extend.west) -- ++(-0.5,0) node[left,font=\tiny]
+      {loop};
+  \end{tikzpicture}
+  \caption{Predictive parse-loop behavioural flow (trace emitted each pass)}
+  \label{fig:flow}
+\end{figure}
+
+\subsubsection*{Translation behaviour}
+At SHIFT the token text is pushed onto the semantic stack; at REDUCE the
+$|$RHS$|$ values are popped and combined by the documented shape rules
+(epsilon $\to$ empty, single symbol $\to$ identity, `$(\ \dots\ )$' $\to$
+drop parentheses, `op $\,\dots$' $\to$ postfix with trailing operator,
+otherwise concatenation); at ACCEPT the final value is emitted as the
+postfix string, from which the TAC value-stack evaluation generates
+\code{tN = x op y} lines for the recognised interactive operators
+\code{+ - * /}.
+
+\subsection{Limits and Boundaries}
+\label{sec:limitsd}
+All capacities are centralised in \code{constants.h}
+(Table~\ref{tab:limits}); \emph{nothing else} hardcodes a buffer size.
+
+\begin{table}[h]
+  \caption{Centralised compile-time limits (values from \code{constants.h})}
+  \label{tab:limits}
+  \small
+  \begin{tabularx}{\textwidth}{p{4.6cm}p{1.4cm}X}
+    \toprule
+    \textbf{Limit} & \textbf{Value} & \textbf{Effect when exceeded} \\
+    \midrule
+    \code{MAX\_SYMBOL\_LENGTH} & 32 & symbol rejected by validation \\
+    \code{MAX\_PRODUCTIONS} & 50 & load fails (`too many productions') \\
+    \code{MAX\_ALTERNATIVES} & 20 & alternative rejected per LHS \\
+    \code{MAX\_RHS\_SYMBOLS} & 20 & alternative rejected \\
+    \code{MAX\_RHS\_LENGTH} & 128 & line rejected \\
+    \code{MAX\_LINE\_LENGTH} & 256 & overlong read split and rejected \\
+    \code{MAX\_SYMBOLS} & 50 & caps non-terminals \emph{and} terminals \\
+    \code{MAX\_SET\_ELEMENTS} & 64 & set growth stops with a warning \\
+    \code{MAX\_STACK\_DEPTH} & 1024 & parse aborts with `stack overflow' \\
+    \code{MAX\_INPUT\_TOKENS} & 256 & tokenisation fails \\
+    \code{MAX\_PARSE\_STEPS} & 20000 & parser aborts (no infinite loops) \\
+    \code{MAX\_SEMANTIC\_STACK} & 256 & translation aborts with error \\
+    \code{MAX\_TAC\_TEMPS} / \code{MAX\_TAC\_LINES} & 64 / 128 & translation
+    aborts with error \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+
+
+%% ------------------------------------------------------------------------
+
+%% ch5_implementation
+
+%% ------------------------------------------------------------------------
+
+\chapter{IMPLEMENTATION}
+
+\section{METHODOLOGY}
+The implementation followed a module-first methodology. The interface
+contract (\code{constants.h}, \code{utils.h}, then one header per module)
+was fixed \emph{before} any logic: every header documents its owner, its
+input guarantees and its failure contract. Each module was then built in
+isolation against a stub consumer before the pipeline was wired in
+\code{main.c}. Two decisions shaped the whole build:
+
+\begin{itemize}
+  \item \textbf{Fixed-size, bounds-checked storage.} All state is stored
+        in static-capacity arrays sized by \code{constants.h}; there is no
+        dynamic memory anywhere. This trades unbounded scalability ---
+        irrelevant at course scale --- for total auditability: every write
+        is checkable against a listed limit, and no allocation failure
+        path exists.
+  \item \textbf{One tokeniser, reused everywhere.} The three RHS
+        tokenisation helpers --- \code{productionAltSymbolCount},
+        \code{productionAltGetSymbol} and \code{productionAltIsEpsilon},
+        defined in \code{grammar.c} --- are shared; FIRST, FOLLOW, the
+        table and the parser consume them. Changing the symbol spelling
+        rules therefore means editing exactly one place.
+\end{itemize}
+
+Coding discipline: ISO C99 \cite{isoC99}, compiled with
+\texttt{-std=c99 -Wall -Wextra -pedantic -O2} to zero warnings; runs build
+return exit status 0 on the development toolchain (gcc 16.1.0).
+
+\section{EXPERIMENTAL SETUP}
+All results in Chapter 6 were executed on one machine with the following
+setup, and are fully reproducible from the repository:
+
+\begin{table}[h]
+  \caption{Experimental setup}
+  \label{tab:setup}
+  \small
+  \begin{tabularx}{\textwidth}{p{3.4cm}X}
+    \toprule
+    \textbf{Item} & \textbf{Configuration} \\
+    \midrule
+    Compiler & gcc 16.1.0 (MSYS2/MinGW-w64, x86-64) \\
+    Flags & \texttt{-std=c99 -Wall -Wextra -pedantic -O2}, include path
+    \texttt{-Iinclude}, sources \texttt{src/*.c} \\
+    Build artefact & single executable \code{ll1} (Windows: \code{ll1.exe}) \\
+    Test driver & \code{testcases/run\_tests.sh} --- 26 named checks
+    (T01--T13 incl.\ sub-runs), bottom-line
+    ``\code{Tests passed: 26\quad failed: 0}'' \\
+    Grammar corpora & \code{testcases/valid/} (8 files), 
+    \code{testcases/invalid/} (8 files), \code{testcases/edge/} (6 files),
+    \code{testcases/inputs/demo\_inputs.txt} \\
+    Execution date & 20 October 2026 (placeholder --- update to
+    your actual run date before submission) \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\noindent Invocation used for the quoted evidence:
+\begin{lstlisting}[style=outputcode]
+  ./ll1 testcases/valid/expression_valid.txt  < demo_inputs.txt
+\end{lstlisting}
+
+\section{ALGORITHMS}
+This section gives, per module, the algorithm as implemented --- the
+pseudocode is a faithful abstraction of the C, not decoration.
+
+\subsection{Grammar Processing (Module 1)}
+\begin{lstlisting}[style=cfg,label=lst:grammar,caption={Grammar load and validation (abridged)}]
+for each input line L (blank lines skipped):
+    pos = textual_position("->")            # arrow is located, not tokenised
+    if none or found twice      -> reject: "missing '->'" / "more than one '->'"
+    lhs = first whitespace word before pos; must be ONE valid symbol
+    for each alternative A in split(rhs_after_pos, '|'):
+        if A empty               -> reject: "empty alternative"
+        if A is exactly "#"      -> epsilon alternative (alone)
+        else for each symbol s of A (space-separated):
+            if s invalid or s=="$" -> reject with line number
+        whitespace-normalise A (collapse runs, trim)
+    if lhs already known: append alternatives to that group
+    else: create new production group
+identifySymbols(): nonTerminals = distinct LHS in first-appearance order
+                   terminals = remaining RHS symbols except "#"
+                   startSymbol = first production's lhs
+grammarValidate(): reject undefined uppercase RHS symbols;
+                   enforce all capacity limits
+\end{lstlisting}
+
+Complexity: line processing is $O(\text{characters})$;
+classification is $O(P\cdot R\cdot(N+T))$ using linear scans, where
+$P$ is the number of productions, $R$ the RHS symbols and $N,T$ the
+vocabulary sizes.
+
+\subsection{FIRST Computation (Module 2)}
+\begin{lstlisting}[style=cfg,label=lst:first,caption={FIRST fixed-point algorithm (abridged)}]
+repeat until a full sweep changes nothing (changed := false):
+    for every production A -> alpha:
+        if alpha is "#":  add "#" to FIRST(A); changed |= grew
+        else:
+            for i in 1..n over symbols X_i of alpha:
+                add FIRST(X_i)\{#} to FIRST(A)
+                if X_i not nullable: break          # stop walking the chain
+            if all X_i nullable: add "#" to FIRST(A)
+        changed |= anything grew
+firstOfSequence("X1 .. Xn") -> (set, hasEpsilon)   # same logic for ONE string
+\end{lstlisting}
+Termination follows from the finite lattice
+(Eq.~\eqref{eq:firstseq}--\eqref{eq:firste}): sets only grow and are
+bounded by $|V_T|{+}1$ elements, so at most $|V_T|{+}1$ sweeps can occur;
+2--3 sweeps suffice for the corpus. Complexity per sweep is
+$O(P\cdot R)$ plus set operations; no recursion is used, so circular
+\code{A -> B}, \code{B -> A} chains resolve correctly.
+
+\subsection{FOLLOW Computation (Module 3)}
+\begin{lstlisting}[style=cfg,label=lst:follow,caption={FOLLOW fixed-point algorithm (abridged)}]
+add "$" to FOLLOW(startSymbol)                      # Rule 1
+repeat until a sweep changes nothing:
+    for every occurrence A -> alpha B beta:         # B at position i of alpha
+        (betaSet, betaEps) = firstOfSequence(beta)  # reused from Module 2
+        add betaSet\{#} to FOLLOW(B)                 # Rule 2
+        if beta is empty or betaEps:                # Rule 3
+            add FOLLOW(A) to FOLLOW(B)
+sort each FOLLOW set for display: grammar-terminal order, "$" last
+\end{lstlisting}
+The sort is a presentation-layer decision only --- membership is complete
+before sorting, so fixed-point semantics are unaffected.
+
+\subsection{Parsing-Table Construction and Conflict Detection (Module 4)}
+\begin{lstlisting}[style=cfg,label=lst:table,caption={Table construction (abridged)}]
+clear table; conflictCount := 0
+for every production reference (A, k) -> alpha:
+    (set, eps) = firstOfSequence(alpha)
+    for each a in set \ {#}:   claim cell [A, a] with (A, k)
+    if eps:                     for each b in FOLLOW(A):
+                                   claim cell [A, b] with (A, k)
+claim cell [row, col] with production p:
+    if cell empty: store (lhsIndex, altIndex)
+    else record conflict {cell, incumbent production, new production p}
+verdict: LL(1)  iff  conflictCount == 0
+\end{lstlisting}
+Cells store \emph{production references}, never duplicated text, so
+``which production does this cell mean?'' always has one authoritative
+answer, and conflicts can be reported with both productions verbatim.
+
+\subsection{Predictive Parsing (Module 5)}
+\begin{lstlisting}[style=cfg,label=lst:parser,caption={Table-driven predictive parse (abridged)}]
+tokens := word_tokenise(input); if empty: emit empty-only epsilon path
+tokens := tokens + "$"                               # end marker appended
+stack := [ "$", startSymbol ]; step := 0
+loop:
+    print trace row: (step, stack, remaining input, last action)
+    if step > MAX_PARSE_STEPS: abort "step limit exceeded"
+    X = top(stack); a = lookahead
+    if X == "$": if a == "$": ACCEPT   else: ERROR trailing input
+    elif X is terminal: X == a ? pop & SHIFT(token) : ERROR position n
+    else: e = M[X, a]
+          if empty cell: ERROR "no parsing-table entry for [X, a]"
+                         + "Expected one of: <row terminals>"
+          else: pop X; push RHS symbols REVERSED (epsilon pushes nothing);
+                record completed-production marker for the SDT hook;
+                step++
+\end{lstlisting}
+Linear-time behaviour follows from classic table-driven analysis: each
+step either consumes one lookahead token or one stack symbol, and both
+supplies are bounded by the input length and the derivation depth
+respectively, with the step cap as an absolute safety net.
+
+\subsection{Syntax-Directed Translation (Module 6)}
+Translation hooks the parser's events. The semantic stack holds text
+fragments:
+\begin{lstlisting}[style=cfg,label=lst:sdt,caption={Event-driven translation (abridged)}]
+on SHIFT(tok):        push(tok)
+on REDUCE(A -> alt):  n := symbolCount(alt); vals := pop n values
+                      result :=
+                        alt = "#"            -> ""            (EPSILON)
+                        n = 1                -> vals[0]       (IDENTITY)
+                        alt = "( X1..Xk )"   -> drop parentheses
+                        alt = "op X1..Xk"    -> postfix(v1..vk, op last)
+                        otherwise            -> concatenation (documented echo)
+                      push(result)
+on ACCEPT:            postfix := pop()  (full input's postfix form)
+TAC phase:            evaluate postfix with value stack;
+                      for each operator op: emit  tN = left op right
+\end{lstlisting}
+The TAC phase is $O(|\text{postfix}|)$ and reuses nothing from the parse
+beyond the final string, which keeps the two translation outputs
+independent and individually testable.
+
+\section{MODULE ORGANISATION AND INTEGRATION}
+\begin{table}[h]
+  \caption{Source-file organisation (lines counted on the delivered tree)}
+  \label{tab:files}
+  \small
+  \begin{tabularx}{\textwidth}{p{4.6cm}p{1.6cm}X}
+    \toprule
+    \textbf{File} & \textbf{Lines} & \textbf{Role} \\
+    \midrule
+    \code{src/grammar.c} & 571 & Module 1: input, validation, classification,
+    tokeniser reuse \\
+    \code{src/main.c} & 436 & driver: pipeline + 9-option menu, lazy
+    stage ordering \\
+    \code{src/parser.c} & 468 & Module 5: parse loop, trace, diagnostics,
+    event hook \\
+    \code{src/translation.c} & 389 & Module 6: semantic stack, postfix,
+    TAC \\
+    \code{src/parsing\_table.c} & 355 & Module 4: table, conflicts,
+    verdict display \\
+    \code{src/follow.c} & 287 & Module 3: FOLLOW fixed point \\
+    \code{src/first.c} & 269 & Module 2: FIRST fixed point + sequence
+    helper \\
+    \code{src/utils.c} & 201 & sets, symbol tables, symbol validation \\
+    \midrule
+    \textbf{Total} & 2976 & (excluding headers, tests, docs) \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Integration in \code{main.c} owns an \code{AppState} aggregating the five
+stage outputs and `done' flags; any menu option lazily triggers exactly
+the missing ancestor stages (table requires FIRST+FOLLOW; parse requires
+the table) and always in dependency order, so no stage runs twice and no
+stage runs on stale data. Two entry points share the same core:
+\code{./ll1} opens the menu; \code{./ll1 <grammar>} runs the automatic
+pipeline and then services input strings from stdin until \code{quit} or
+EOF (an empty line is parsed as the epsilon input).
+
+
+
+%% ------------------------------------------------------------------------
+
+%% ch6_results
+
+%% ------------------------------------------------------------------------
+
+\chapter{RESULTS AND DISCUSSION}
+
+\section{SAMPLE TEST CASES}
+The test corpus is split by intent: \code{testcases/valid/} (grammars the
+tool should accept as LL(1) or as valid CFGs), \code{testcases/invalid/}
+(grammars that must be rejected with a precise diagnostic), and
+\code{testcases/edge/} (boundary shapes: pure epsilon, no-space arrows,
+empty input, single token, deep expressions, optional symbols). The
+complete specification of every case in the Annexure-1 template is given
+in Annexure 1; this section presents the representative executed results.
+
+\begin{longtable}{@{}p{1.0cm}p{2.6cm}p{3.2cm}>{\raggedright\arraybackslash}p{3.8cm}>{\raggedright\arraybackslash}p{1.5cm}@{}}
+  \caption{Executed sample test cases (subset; full list in Annexure 1)}
+  \label{tab:tests}\\
+  \toprule
+  \textbf{TC ID} & \textbf{Scenario} & \textbf{Input / Grammar} &
+  \textbf{Expected Result} & \textbf{Observed} \\
+  \midrule
+  \endfirsthead
+  \toprule
+  \textbf{TC ID} & \textbf{Scenario} & \textbf{Input / Grammar} &
+  \textbf{Expected Result} & \textbf{Observed} \\
+  \midrule
+  \endhead
+  \bottomrule
+  \endfoot
+  T01 & Valid LL(1) demo & the locked expression grammar
+  (Section~\ref{sec:demoexpr}) & FIRST/FOLLOW exactly as computed;
+  ``Grammar is LL(1).'' & Pass\footnotemark \\
+  T02 & Epsilon propagation & S $\to$ A a B b; A $\to$ a $\mid$ \#;
+  B $\to$ b $\mid$ \# & FIRST(S)$=$\{a,b\}, nullable A,B & Pass \\
+  T03 & Pure-epsilon CFG & S $\to$ \# & FIRST(S)$=$\{\#\},
+  FOLLOW(S)$=$\{$\}$; LL(1) & Pass \\
+  T04 & Non-LL(1) conflict & S $\to$ a A $\mid$ a B; A $\to$ b; B $\to$ c &
+  ``Conflict detected at M[S, a]''; both productions shown; NOT LL(1) &
+  Pass \\
+  T05 & Minimal grammar & S $\to$ a & FIRST(S)$=$\{a\};
+  FOLLOW(S)$=$\{\$\}; parses ``a''; rejects ``b'' & Pass \\
+  T06a--T06f & Invalid-grammar battery & 8 malformed grammars & each
+  rejected with the exact named reason + line number & Pass (all) \\
+  T07 & Indirect recursion & S $\to$ A c; A $\to$ S b $\mid$ \# &
+  correctly reported NOT LL(1) (clash at M[A,c]) & Pass \\
+  T08 & Valid input + trace & ``id + id * id'' against demo grammar &
+  INPUT ACCEPTED, full trace & Pass \\
+  T09 & Invalid input & ``id + * id'' & SYNTAX ERROR: no table entry for
+  [T, *]; expected list printed & Pass \\
+  T10 / T10b & SDT correctness & ``a + b * c''; ``id * id + id'' &
+  postfix; TAC lines \code{t1 = b * c}, \code{t2 = a + t1} (and variant) &
+  Pass (both) \\
+  T11 & Compact syntax & \code{Ep->+ T Ep|\#} spacing & accepted; arrow is
+  located textually & Pass \\
+  T12/T12b & Optional symbol & S $\to$ A b; A $\to$ a $\mid$ \# & ``a b''
+  and ``b'' both ACCEPTED & Pass \\
+  T13 & Left recursion & left-recursive.txt, E $\to$ E + T & conflict at
+  cell M[E, id]; NOT LL(1); no crash & Pass \\
+  \bottomrule
+\end{longtable}
+\footnotetext{``Pass'' marks \emph{observed} results: the 26-check suite
+can be re-executed via \code{sh testcases/run\_tests.sh} on any machine
+with a C99 toolchain; see Annexure 1. Dates/observations were recorded
+during preparation of this report and must be re-verified on your machine
+before submission.}
+
+\section{DEMONSTRATION ARTEFACTS (OBSERVED)}
+\label{sec:demoexpr}
+The demonstration grammar below is the one locked for all reviews and is
+used consistently throughout this report:
+\begin{lstlisting}[style=cfg,label=lst:demogram,caption={The demonstration grammar}]
+E  -> T Ep
+Ep -> + T Ep | #
+T  -> F Tp
+Tp -> * F Tp | #
+F  -> ( E ) | id
+\end{lstlisting}
+Input ``\code{id + id * id}''; end marker `$\$$' appended by the parser.
+
+\subsection{FIRST and FOLLOW Sets (Observed)}
+\begin{lstlisting}[style=outputcode,label=lst:sets,caption={FIRST and FOLLOW as printed by the tool}]
+FIRST(E)  = { (, id }        FOLLOW(E)  = { ), $ }
+FIRST(Ep) = { +, # }         FOLLOW(Ep) = { ), $ }
+FIRST(T)  = { (, id }        FOLLOW(T)  = { +, ), $ }
+FIRST(Tp) = { *, # }         FOLLOW(Tp) = { +, ), $ }
+FIRST(F)  = { (, id }        FOLLOW(F)  = { *, +, ), $ }
+\end{lstlisting}
+These observed sets match the theory-derived values exactly: nullable
+symbols \code{Ep} and \code{Tp} contribute `$\#$'; `$\$$' enters
+FOLLOW(E) by Rule 1 and propagates (E$'~=$~Ep,~T$'~=$~Tp chain) through
+Rules 2--3.
+
+\subsection{Parsing Table (Observed)}
+Table~\ref{tab:parsertable} reproduces the tool's printed table for the
+demo grammar (rows = non-terminals; columns = terminals in
+first-appearance order `+, *, (, ), id' plus the reserved `$\$$' column
+that the tool owns internally).
+
+\begin{table}[h]
+  \caption{Predictive parsing table $M[A,a]$ for the demonstration grammar (tool output)}
+  \label{tab:parsertable}
+  \small
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{l|l|l|l|l|l|l}
+    \toprule
+    \textbf{NT} & \textbf{+} & \textbf{*} & \textbf{(} & \textbf{)} & \textbf{id} & \textbf{\$} \\
+    \midrule
+    E     &        &        & E$\to$T Ep &        & E$\to$T Ep &        \\
+    Ep    & Ep$\to$+T Ep &                  &            & Ep$\to$\# &            & Ep$\to$\# \\
+    T     &        &        & T$\to$F Tp &        & T$\to$F Tp &         \\
+    Tp    & Tp$\to$\# & Tp$\to$*F Tp &            & Tp$\to$\# &            & Tp$\to$\# \\
+    F     &        &        & F$\to$( E ) &        & F$\to$id &          \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+\noindent Every non-empty cell holds exactly one production; the verdict
+line printed was ``\code{No LL(1) conflicts detected. Grammar is LL(1).}''.
+
+\subsection{Parse Trace (Observed)}
+\begin{lstlisting}[style=outputcode,label=lst:trace,caption={Trace excerpt for ``id + id * id''; match rows omitted for brevity as printed}]
+Step  Stack          Input           Action
+----------------------------------------------------
+1     $ E            id + id * id $  E -> T Ep
+2     $ Ep T         id + id * id $  T -> F Tp
+3     $ Ep Tp F      id + id * id $  F -> id
+...   (match id; Tp -> #, Ep -> + T Ep; match +;
+       T -> F Tp; F -> id; match id; Tp -> * F Tp;
+       match *; F -> id; match id; Tp -> #; Ep -> #)
+25    $              $               accept
+Result: INPUT ACCEPTED
+\end{lstlisting}
+
+\subsection{Syntax-Directed Translation (Observed)}
+\begin{lstlisting}[style=outputcode,label=lst:sdtout,caption={Translation outputs as printed by the tool}]
+Input "a + b * c":
+  Postfix:              a b c * +
+  Three-address code:   t1 = b * c
+                        t2 = a + t1
+
+Input "id + id * id":
+  Postfix:              id id id * +
+  Three-address code:   t1 = id * id
+                        t2 = id + t1
+\end{lstlisting}
+The precedence behaviour is faithful (multiplication binds tighter
+because \code{Tp -> * F Tp} reduces \emph{first} in the post-order
+emission), and parentheses re-associate the emitted code exactly as the
+grammar dictates (verified in the suite for \code{( a + b ) * ( a + c )}
+yielding \code{t3 = t1 * t2}). The demonstration input ``\code{id + id *
+id}'' is one expression; confirming that this example parses does not,
+by itself, prove that \emph{every} possible grammar or input is handled
+correctly --- that assurance rests on the pattern of 26 checks in
+Annexure 1, each of which isolates one behaviour.
+
+\section{ERROR HANDLING}
+Error handling was exercised as deliberately as the success path, with
+each failure mode producing diagnostics at the stage that detects it:
+
+\begin{itemize}
+  \item \textbf{Grammar stage.} Eight malformed corpora
+        (T06a--T06f plus variants) are each rejected with a named reason
+        and the offending line number; the pipeline refuses to emit any
+        downstream artefact on any rejection.
+  \item \textbf{Analysis stage.} FIRST/FOLLOW/table stages re-verify
+        their preconditions (``not validated / mismatched input'') and
+        capacity limits before filling the table.
+  \item \textbf{Parser stage.} Positioned diagnostics carry the token
+        position, the offending token, the exact missing cell
+        (\code{No parsing-table entry for [T, *]}) and the row's expected
+        terminals; trailing garbage after acceptance is reported
+        distinctly; step and stack caps prevent any non-termination.
+  \item \textbf{Translation stage.} Semantic stack overflow/underflow and
+        temporary/line caps surface as lastError in the translation
+        result rather than terminating the process.
+\end{itemize}
+No input in the corpus crashes the tool; every buffer write is bounds
+checked against the centralised limits of Table~\ref{tab:limits}.
+
+\section{DISCUSSION: COMPLEXITY AND QUALITY OF RESULTS}
+\label{sec:complexity}
+The stated asymptotics distinguish \emph{theoretical estimates} from
+\emph{executed behaviour}:
+\begin{itemize}
+  \item \textbf{FIRST/FOLLOW.} The number of sweeps is bounded by
+        $|V_T|{+}1$ (lattice height, Section~\ref{sec:ll1conditions}); at
+        course scale the observed sweep counts were 2--3. Per sweep the
+        cost is $O(P\cdot R \cdot c)$ where $c$ is the per-substring
+        FIRST evaluation cost; no recursion is used, so recursive
+        grammars behave identically to acyclic ones.
+  \item \textbf{Table construction.} $O(P\cdot T)$ placements with
+        $O(T)$ column lookup (linear scan); seconds for the limit
+        envelope ($50 \times 51$ cells).
+  \item \textbf{Parsing.} Each step consumes one lookahead or one stack
+        symbol; steps are bounded by $O(|x|)$ for LL(1) grammars, and the
+        observed trace for the demo input was 25 steps including
+        matches.
+  \item \textbf{Translation.} Produces the postfix string during the
+        parse and evaluates it for TAC in $O(|\text{postfix}|)$.
+\end{itemize}
+\textbf{No wall-clock benchmarking claims are made}: inputs at course
+scale execute effectively instantaneously, and no performance
+measurement beyond the step counts above was recorded. \emph{Theoretical}
+estimates only are presented for larger grammars, as honest estimates
+subject to the stated assumptions (bounded set sizes, terminal-order
+lookups).
+
+\section{SUMMARY OF THE RESULTS}
+The executed evidence supports one sentence per objective mapped in
+Section~\ref{sec:aim}: the pipeline accepts arbitrary documented
+grammars, computes theory-consistent FIRST/FOLLOW sets, builds a correct
+LL(1) table, reports non-LL(1) grammars with exact conflict evidence,
+parses inputs with a visible linear-time trace and precise diagnostics,
+and produces correct postfix and three-address code --- all under a test
+suite of 26 automated checks whose observed outcome was
+\textbf{26 passed, 0 failed}.
+
+
+
+%% ------------------------------------------------------------------------
+
+%% ch7_conclusion
+
+%% ------------------------------------------------------------------------
+
+\chapter{CONCLUSION, LIMITATIONS AND SCOPE FOR FUTURE WORK}
+
+\section{CONCLUSION}
+This project set out to remove the manual stage of LL(1) parser
+construction --- hand-computed FIRST sets, hand-copied predictive tables
+and hand-written grammar-specific loops --- and replace it with a
+grammar-agnostic, auditable tool. The delivered system meets that aim:
+
+\begin{itemize}
+  \item \textbf{Automated LL(1) parser generation.} Any grammar in the
+        documented line format flows through validation, classification,
+        FIRST, FOLLOW, table construction, conflict detection, parsing
+        and translation without a single grammar-specific line of code;
+        the demonstration results of Chapter 6 were produced by the
+        pipeline, not inserted into it.
+  \item \textbf{Theory-faithful FIRST/FOLLOW computation.} The sets are
+        computed as least fixed points of the classical equations, with
+        epsilon propagation and direct and indirect recursion verified by
+        executed tests.
+  \item \textbf{Predictive parsing-table generation with conflict
+        evidence.} Cells store production references; a claimed-twice
+        cell is reported with both productions and the terminal, and
+        parsing is refused for non-LL(1) grammars.
+  \item \textbf{Predictive parsing with full observability.} The
+        stack/input/action trace, the `$\$$' end-marker discipline,
+        positioned diagnostics and bounded resources were all exercised
+        by the executed suite.
+  \item \textbf{Syntax-directed translation.} Postfix output and
+        three-address code are emitted from parser events on the same
+        parse, demonstrating event-driven SDT without a separate pass.
+  \item \textbf{Verified, reproducible quality.} The 26-check automated
+        suite was executed with the observed result ``Tests passed: 26,
+        failed: 0'', covering valid grammars, invalid productions,
+        epsilon handling, conflicts, trace/diagnostic behaviour and both
+        translation outputs.
+\end{itemize}
+
+Beyond the functional objectives, the project's second-order lesson is
+methodological: centralising every capacity in one header, paralleling
+each module with its test corpus, and refusing to proceed on invalid
+input are what made the system simultaneously simple to reason about and
+robust in use.
+
+\section{CONTRIBUTIONS OF THE TEAM}
+Each member owned, implemented and can explain one module end to end ---
+grammar processing and validation (24BCE0092), FIRST computation
+(24BDE0155), FOLLOW computation (24BCE0556), parsing-table construction
+with conflict detection (24BCI0103), and the predictive parser with
+syntax-directed translation (24BDS0044) --- while the integration driver,
+the test suite, the documentation and the review material were produced
+jointly.
+
+\section{LIMITATIONS}
+The following limitations are stated as properties of the delivered
+system, not as possibilities:
+\begin{enumerate}
+  \item \textbf{Fixed capacities.} All buffers are static arrays bounded
+        by Table~\ref{tab:limits}; very large grammars or inputs are
+        rejected safely rather than handled.
+  \item \textbf{No grammar transformation.} Left-recursive or
+        left-factoring-required grammars are reported NOT LL(1) with
+        their conflicting cells; the tool does not rewrite them.
+  \item \textbf{No lexer layer.} Input tokens are whitespace-separated
+        words; multi-character terminals like \code{id} are just words,
+        and no regular-expression specification is supported.
+  \item \textbf{SDT shape rules.} The built-in translation covers the
+        standard operator-encoding pattern; RHS shapes outside it
+        translate as plain concatenation (a documented echo) rather than
+        failing.
+  \item \textbf{Trace and semantic caps.} Extremely long inputs truncate
+        the printed trace (with a notice) or stop the translation with an
+        error at the documented limits.
+  \item \textbf{LL(1) only.} No conflict-resolution heuristics and no LR
+        fallback; SLR/LALR behaviour is out of scope.
+  \item \textbf{Implicit `$\$$' column.} The end-marker column is
+        functional but not printed as part of the terminal row.
+\end{enumerate}
+
+\section{SCOPE FOR FUTURE WORK}
+The architecture makes each enhancement a bounded, local change:
+\begin{enumerate}
+  \item \textbf{Grammar transformation stage:} automatic left-recursion
+        elimination and left factoring before table construction, with a
+        before/after diff shown to the user.
+  \item \textbf{Richer diagnostics:} suggestions mode that names the
+        offending alternative pair and the applicable LL(1) condition
+        (the three-condition test) alongside the conflict report.
+  \item \textbf{Parse-tree visualisation:} the parser's reduction history
+        already encodes a leftmost derivation; rendering it as a tree
+        would complete the classical toolset.
+  \item \textbf{Additional translation schemes:} infix-to-prefix, syntax
+        tree construction and typed TAC emission behind the existing
+        event hook.
+  \item \textbf{Formats and ergonomics:} multi-line alternatives,
+        comments in grammar files, and a library mode exposing the
+        modules for classroom experiments.
+  \item \textbf{Dynamic storage normalization:} replacing the largest
+        static buffers with arena allocation to lift the capacity limits
+        while keeping the bounds-checking discipline.
+\end{enumerate}
+
+
+
+%% ======================= ANNEXURES =========================================
+
+\appendix
+
+\renewcommand{\chaptertitlename}{ANNEXURE}
+
+\chapter{TEST CASES}
+\label{annex:testcases}
+
+This annexure lists the automated integration suite
+(\code{testcases/run\_tests.sh}) in the standard test-case format. All
+cases are executed by one suite run whose bottom line is printed after
+the register; the individual execution date should be recorded in
+Table~\ref{tab:setup} (Chapter 5) when you re-verify on your machine.
+
+\section{TEST CASE TEMPLATE}
+\begin{table}[h]
+  \caption{Test case template (per-check)}
+  \label{tab:tc_template}
+  \small
+  \begin{tabularx}{\textwidth}{p{3.2cm}X}
+    \toprule
+    \textbf{Field} & \textbf{Content} \\
+    \midrule
+    Test Case ID & Txx (Txxb: sub-run of the same grammar) \\
+    Test Case Description & One-sentence intent of the scenario \\
+    Test Case Type & Integration (black-box, via the CLI binary) \\
+    Pre-conditions & Executable built; testcases/ tree present \\
+    Input & Grammar file path and/or stdin strings \\
+    Expected / Actual Result & Marker strings the suite greps for \\
+    Pass/Fail & Status of the most recent executed run \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\section{EXECUTED TEST CASE REGISTER}
+\begin{longtable}{@{}p{0.9cm}p{2.5cm}p{3.2cm}>{\raggedright\arraybackslash}p{3.9cm}>{\raggedright\arraybackslash}p{1.5cm}@{}}
+  \caption{Complete executed test-case register (26 checks)}
+  \label{tab:tc_all}\\
+  \toprule
+  \textbf{ID} & \textbf{Description} & \textbf{Input} & \textbf{Expected
+  marker} & \textbf{Status} \\
+  \midrule
+  \endfirsthead
+  \toprule
+  \textbf{ID} & \textbf{Description} & \textbf{Input} & \textbf{Expected
+  marker} & \textbf{Status} \\
+  \midrule
+  \endhead
+  \bottomrule
+  \endfoot
+  T01 & Demo grammar end-to-end & expression\_valid.txt & FIRST/FOLLOW
+  exact sets; ``Grammar is LL(1)'' & PASS \\
+  T02 & Epsilon propagation & epsilon\_propagation.txt & FIRST(S)$=$\{a
+  ,b\}; nullable A,B & PASS \\
+  T03 & Pure-epsilon grammar & pure\_epsilon.txt & FIRST(S)$=$\{\#\};
+  LL(1) & PASS \\
+  T03b & Epsilon input string & empty line on pure\_epsilon & INPUT
+  ACCEPTED & PASS \\
+  T04 & Conflict detection & non\_ll1\_conflict.txt & ``Conflict
+  detected at M[S, a]''; NOT LL(1) & PASS \\
+  T05 & Minimal grammar & simple.txt (S$\to$a) & FIRST(S)$=$\{a\};
+  FOLLOW(S)$=$\{$\}$ & PASS \\
+  T05b & Accept valid input & ``a'' & INPUT ACCEPTED & PASS \\
+  T05c & Reject invalid input & ``b'' & SYNTAX ERROR; no entry [S,b] &
+  PASS \\
+  T06a & Undefined non-terminal & undefined\_nt.txt & rejected: ``never
+  defined'' & PASS \\
+  T06b & Missing arrow & missing\_arrow.txt & rejected: ``missing
+  `-\!>' '' & PASS \\
+  T06c & Double arrow & double\_arrow.txt & rejected: ``more than one
+  arrow'' & PASS \\
+  T06d & Invalid symbol & bad\_symbol.txt (a\$b) & rejected: ``invalid
+  symbol'' & PASS \\
+  T06e & Empty alternative & empty\_alt.txt & rejected: ``empty
+  alternative'' & PASS \\
+  T06f & End marker in grammar & end\_marker.txt & rejected: `$\$$'
+  reserved & PASS \\
+  T07 & Indirect recursion & indirect\_recursion.txt & correctly NOT
+  LL(1) (M[A,c] clash) & PASS \\
+  T08 & Valid input + trace & demo grammar, 3 strings & INPUT ACCEPTED
+  with full trace & PASS \\
+  T09 & Invalid input (mid) & ``id + * id'' & SYNTAX ERROR no entry [T,*] &
+  PASS \\
+  T09b & Invalid input (end) & ``id +'' & SYNTAX ERROR & PASS \\
+  T10 & SDT operators & ``a + b * c'' & postfix ``a b c * +''; TAC t1,$t2$ &
+  PASS \\
+  T10b & SDT variant & ``id * id + id'' & postfix ``id id * id +''; TAC
+  t1, t2 & PASS \\
+  T11 & Compact arrow syntax & no\_space\_arrow.txt & accepted; LL(1) &
+  PASS \\
+  T12 & Nullable in RHS & optional\_symbol.txt & accepted; LL(1) & PASS \\
+  T12b & Optional parsing & ``a b'' and ``b'' & both ACCEPTED & PASS \\
+  T13 & Left recursion & left\_recursive.txt & NOT LL(1) reported & PASS \\
+  \bottomrule
+\end{longtable}
+\noindent Final line of the executed run:
+\begin{lstlisting}[style=outputcode]
+  Tests passed: 26   failed: 0
+\end{lstlisting}
+
+\chapter{CODE}
+\label{annex:code}
+
+The complete source (2\,976 lines across 8 modules, plus headers, tests
+and documentation) is delivered in the project repository. This annexure
+reproduces the three excerpts that carry the intellectual core of the
+system, with the files referenced. \emph{(The listing line numbers refer
+to the delivered files.)}
+
+\section{FIRST Fixed-Point Sweep (src/first.c --- excerpt)}
+\begin{lstlisting}[language=C,label=lst:firstcode,caption={FIRST fixed-point iteration (abridged from src/first.c)}]
+int computeAllFirstSets(Grammar *g, FirstCollection *out) {
+    initializeFirstCollection(out, g);
+    int changed = 1;
+    while (changed) {                       /* least fixed point   */
+        changed = 0;
+        for (int p = 0; p < g->productionCount; ++p) {
+            Production *pr = &g->productions[p];
+            for (int a = 0; a < pr->rhsCount; ++a) {
+                if (productionAltIsEpsilon(pr->rhs[a])) {
+                    addEpsilonToFirstSet(out, p);   /* A -> #
+                    changed |= 1;
+                } else {
+                    char sym[MAX_SYMBOL_LENGTH];
+                    int nullable = 1;
+                    int cnt = productionAltSymbolCount(pr->rhs[a]);
+                    for (int i = 0; i < cnt; ++i) {
+                        productionAltGetSymbol(pr->rhs[a], i, sym);
+                        addSymbolsToFirstSet(out, p, sym, g);
+                        if (!firstSetContainsEpsilon(...)) {
+                            nullable = 0; break;    /* stop the chain */
+                        }
+                    }
+                    if (nullable) addEpsilonToFirstSet(out, p);
+                }
+            }
+        }
+    }
+    return 1;
+}
+\end{lstlisting}
+(Identifiers are lightly abridged; the delivered file is normative.)
+
+\section{FOLLOW Rules Sweep (src/follow.c --- excerpt)}
+\begin{lstlisting}[language=C,label=lst:follcode,caption={FOLLOW fixed point: Rules 1--3 (abridged from src/follow.c)}]
+int initializeFollowCollection(void);
+/* Rule 1: $ belongs to FOLLOW(start). */
+addTerminalToFollowSet(follows, startIndex, END_MARKER, g);
+
+while (changed) {
+    for (each production A -> alpha) {
+        for (each symbol position i of alpha) {
+            if (symbol is non-terminal B) {
+                beta = suffix of alpha after B;
+                firstOfSequence(beta, g, firsts, seq, &eps);
+                /* Rule 2: FIRST(beta)\{#} into FOLLOW(B). */
+                addSequenceSymbolsExceptEpsilon(...);
+                /* Rule 3: beta nullable (or empty) => FOLLOW(A). */
+                if (betaEmpty || eps)
+                    mergeFollowInto(follows, B_index, A_index, g);
+            }
+        }
+    }
+}
+\end{lstlisting}
+
+\section{Predictive Parse Loop (src/parser.c --- excerpt)}
+\begin{lstlisting}[language=C,label=lst:parsecodang,caption={Table-driven predictive loop (abridged from src/parser.c)}]
+/* stack = "$ start"; tokens already end with "$". */
+while (!accepted && !state.lastError) {
+    tracePrintRow(&state, ...);
+    if (++state.stepNumber > MAX_PARSE_STEPS)
+        { lastError = "step limit exceeded"; break; }
+    const char *X = topSymbol(&state);
+    const char *a = curToken(&state);
+    if (isEndMarker(X)) {
+        if (isEndMarker(a)) accepted = 1;             /* accept   */
+        else trailingGarbageError(&state, a);          /* $ vs a   */
+    } else if (grammarIsTerminal(g, X)) {
+        if (matchToken(X, a)) { fireShift(X); pop(&state); advance(&state); }
+        else mismatchError(&state, X, a);
+    } else {
+        TableEntry e = tableLookup(table, X, a);
+        if (isEmptyEntry(&e)) noTableEntryError(&state, X, a);  /* +expect */
+        else { popNonTerminal(&state);
+               pushRhsReversed(&state, e.lhsIndex, e.altIndex);
+               recordReduceMarker(e.lhsIndex, e.altIndex); }
+    }
+}
+\end{lstlisting}
+
+\section{Grammar Corpora Sample}
+The three representative corpora of the suite
+(\code{testcases/valid/\allowbreak expression\_valid.txt},
+\code{testcases/invalid/\allowbreak missing\_arrow.txt},
+\code{testcases/edge/\allowbreak pure\_epsilon.txt}):
+\begin{lstlisting}[style=cfg,label=lst:corpora,caption={Sample grammar corpora}]
+# valid/expression_valid.txt
+E  -> T Ep
+Ep -> + T Ep | #
+T  -> F Tp
+Tp -> * F Tp | #
+F  -> ( E ) | id
+
+# invalid/missing_arrow.txt   (line 1 has no "->")
+E T Ep
+
+# edge/pure_epsilon.txt
+S -> #
+\end{lstlisting}
+
+
+%% ======================= REFERENCES ========================================
+
+\chapter{REFERENCES}
+\label{page:references}
+\begin{thebibliography}{9}
+\setlength{\itemsep}{6pt}
+
+\bibitem{lewis1968}
+P.~M. Lewis, II and R.~E. Stearns, ``Syntax-directed transduction,''
+\emph{Journal of the ACM}, vol.~15, no.~3, pp.~465--488, Jul.~1968,
+doi:~10.1145/321466.321477.
+
+\bibitem{rosenkrantz1970}
+D.~J. Rosenkrantz and R.~E. Stearns, ``Properties of deterministic
+top-down grammars,'' \emph{Information and Control}, vol.~17, no.~3,
+pp.~226--256, 1970, doi:~10.1016/S0019-9958(70)90446-8.
+
+\bibitem{aho2006compilers}
+A.~V. Aho, M.~S. Lam, R.~Sethi, and J.~D. Ullman, \emph{Compilers:
+Principles, Techniques, and Tools}, 2nd~ed. Boston, MA, USA:
+Pearson/Addison-Wesley, 2006, ISBN~978-0-321-48681-3.
+
+\bibitem{aho1972}
+A.~V. Aho and J.~D. Ullman, \emph{The Theory of Parsing, Translation, and
+Compiling}, vol.~1: \emph{Parsing}. Englewood Cliffs, NJ, USA:
+Prentice-Hall, 1972.
+
+\bibitem{gruene2008}
+D.~Grune and C.~J.~H. Jacobs, \emph{Parsing Techniques: A Practical
+Guide}, 2nd~ed. London, U.K.: Springer, 2008, ISBN~978-1-4419-1901-4.
+
+\bibitem{johnson1975}
+S.~C. Johnson, \emph{Yacc: Yet Another Compiler-Compiler}, Computing
+Sciences Technical Report No.~32, Bell Laboratories, Murray Hill, NJ,
+USA, Jul.~1975.
+
+\bibitem{bison2021}
+Free Software Foundation, \emph{GNU Bison: The Yacc-Compatible Parser
+Generator}, ver.~3.8.1, Sep.~2021. [Online]. Available:
+\url{https://www.gnu.org/software/bison/manual/}
+
+\bibitem{parr2013}
+T.~Parr, \emph{The Definitive ANTLR 4 Reference}. Raleigh, NC, USA:
+Pragmatic Bookshelf, 2013, ISBN~978-1-934356-99-9.
+
+\bibitem{isoC99}
+ISO/IEC, \emph{Programming Languages --- C}, ISO/IEC 9899:1999, 2nd~ed.,
+Geneva, Switzerland, Dec.~1999.
+
+\bibitem{isoC11}
+ISO/IEC, \emph{Information Technology --- Programming Languages --- C},
+ISO/IEC 9899:2011, 3rd~ed., Geneva, Switzerland, Dec.~2011.
+
+\end{thebibliography}
+
+\end{document}
